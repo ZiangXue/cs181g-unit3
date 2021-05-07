@@ -163,6 +163,25 @@ impl Collide<Plane> for Sphere {
     }
 }
 
+impl Collide<Plane> for Box {
+    fn touching(&self, p: &Plane) -> bool {
+        // Assume AA: find the distance from center to surface
+        self.c.y - self.half_sizes.y < p.d
+    }
+    fn disp(&self, p: &Plane) -> Option<Vec3> {
+        // Find the distance of the sphere's center to the plane
+        let dist = self.c.y - self.half_sizes.y;
+        if dist.abs() <= p.d {
+            // If we offset from the sphere position opposite the normal,
+            // we'll end up hitting the plane at `dist` units away.  So
+            // the displacement is just the plane's normal * dist.
+            Some(p.n * (self.half_sizes.y - dist))
+        } else {
+            None
+        }
+    }
+}
+
 type CastHit = Option<(Pos3, f32)>;
 
 trait Cast<S: Shape> {
