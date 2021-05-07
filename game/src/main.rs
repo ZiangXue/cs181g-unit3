@@ -524,11 +524,14 @@ impl<C: Camera> engine3d::Game for Game<C> {
             &[self.wall.body],
             &mut self.tw,
         );*/
+        let mut marbles_to_remove = vec![];
+        let mut player_to_remove = vec![];
         collision::restitute_dyns(
             &mut self.marbles.body,
             &mut self.marbles.velocity,
             &mut self.marbles.hp,
             &mut self.mm,
+            &mut marbles_to_remove,
         );
         collision::restitute_dyn_dyn(
             &mut vec![self.player.body],
@@ -538,6 +541,8 @@ impl<C: Camera> engine3d::Game for Game<C> {
             &mut self.marbles.velocity,
             &mut self.marbles.hp,
             &mut self.pm,
+            &mut player_to_remove,
+            &mut marbles_to_remove,
         );
         self.player.body = pb[0];
         self.player.velocity = pv[0];
@@ -552,7 +557,18 @@ impl<C: Camera> engine3d::Game for Game<C> {
             self.player.velocity *= 0.98;
         }
 
+        clean(&mut self.marbles.body,&mut marbles_to_remove);
+        clean(&mut self.marbles.velocity,&mut marbles_to_remove);
+        clean(&mut self.marbles.hp,&mut marbles_to_remove);
+
         self.camera.update_camera(engine.camera_mut());
+    }
+}
+
+fn clean<T>(vec: &mut Vec<T>,indices: &mut Vec<usize>){
+    indices.sort_by(|a, b| b.cmp(a));
+    for &a in indices.iter(){
+        vec.remove(a);
     }
 }
 

@@ -48,11 +48,15 @@ pub fn restitute_dyn_dyn<S1: Shape, S2: Shape>(
     bvels: &mut Vec<Vec3>,
     bhps: &mut Vec<usize>,
     contacts: &mut Vec<Contact<usize>>,
+    a_to_remove: &mut Vec<usize>,
+    b_to_remove: &mut Vec<usize>,
 )
 where
     S1: Collide<S2>,
 {
     contacts.sort_unstable_by(|a, b| b.mtv.magnitude2().partial_cmp(&a.mtv.magnitude2()).unwrap());
+    let mut a_to_remove = vec![];
+    let mut b_to_remove = vec![];
     // That can bump into each other in perfectly elastic collisions!
     for c in contacts.iter() {
         let a = c.a;
@@ -69,22 +73,38 @@ where
                 ahps[a] -= 1;
             } else {
                 ahps[a] = 0;
+                if !a_to_remove.contains(&a) {
+                    a_to_remove.push(a);
+                }
             }
             if bhps[b] >= 1 {
                 bhps[b] -= 1;
             } else {
                 bhps[b] = 0;
+                if !b_to_remove.contains(&b) {
+                    b_to_remove.push(b);
+                }
             }
         }
     }
+
+    /*
+    clean(ashapes,&mut a_to_remove);
+    clean(avels,&mut a_to_remove);
+    clean(ahps,&mut a_to_remove);
+    clean(bshapes,&mut b_to_remove);
+    clean(bvels,&mut b_to_remove);
+    clean(bhps,&mut b_to_remove);*/
 }
 
 pub fn restitute_dyns<S1: Shape>(
-    ashapes: &mut [S1],
-    avels: &mut [Vec3],
-    ahps: &mut [usize],
+    ashapes: &mut Vec<S1>,
+    avels: &mut Vec<Vec3>,
+    ahps: &mut Vec<usize>,
     contacts: &mut [Contact<usize>],
-) where
+    a_to_remove: &mut Vec<usize>,
+)
+where
     S1: Collide<S1>,
 {
     contacts.sort_unstable_by(|a, b| b.mtv.magnitude2().partial_cmp(&a.mtv.magnitude2()).unwrap());
@@ -114,18 +134,30 @@ pub fn restitute_dyns<S1: Shape>(
             avels[b] += b_gain;
             ashapes[a].translate(-disp / 2.0);
             ashapes[b].translate(disp / 2.0);
+            
             if ahps[a] >= 1 {
                 ahps[a] -= 1;
             } else {
                 ahps[a] = 0;
+                if !a_to_remove.contains(&a) {
+                    a_to_remove.push(a);
+                }
             }
             if ahps[b] >= 1 {
                 ahps[b] -= 1;
             } else {
                 ahps[b] = 0;
+                if !a_to_remove.contains(&b) {
+                    a_to_remove.push(b);
+                }
             }
         }
     }
+
+    /*
+    clean(ashapes,&mut a_to_remove);
+    clean(avels,&mut a_to_remove);
+    clean(ahps,&mut a_to_remove);*/
 }
 
 pub fn gather_contacts_ab<S1: Shape, S2: Shape>(a: &[S1], b: &[S2], into: &mut Vec<Contact<usize>>)
@@ -183,4 +215,11 @@ fn vel_distribute(v_1: Vec3, v_2: Vec3, m_1: f32, m_2: f32, direction: Vec3) -> 
 // return norm of a Vec3
 fn norm(v_1: Vec3) -> f32 {
     (v_1.dot(v_1) as f32).sqrt()
+}
+
+fn clean<T>(vec: &mut Vec<T>,indices: &mut Vec<usize>){
+    indices.sort_by(|a, b| b.cmp(a));
+    for &a in indices.iter(){
+        vec.remove(a);
+    }
 }
