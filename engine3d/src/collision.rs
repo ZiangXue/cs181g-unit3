@@ -209,17 +209,10 @@ fn vel_distribute(v_1: Vec3, v_2: Vec3, m_1: f32, m_2: f32, direction: Vec3) -> 
     let sum_impulse = (ma_dir_norm + mb_dir_norm) * direction;
     let a_gain = sum_impulse * -1.0 * (m_2 / (m_1 + m_2)) / m_1;
     let b_gain = sum_impulse * (m_1 / (m_1 + m_2)) / m_2;
-    return (a_gain, b_gain);
+    (a_gain, b_gain)
 }
 
 // return norm of a Vec3
 fn norm(v_1: Vec3) -> f32 {
     (v_1.dot(v_1) as f32).sqrt()
-}
-
-fn clean<T>(vec: &mut Vec<T>,indices: &mut Vec<usize>){
-    indices.sort_by(|a, b| b.cmp(a));
-    for &a in indices.iter(){
-        vec.remove(a);
-    }
 }
