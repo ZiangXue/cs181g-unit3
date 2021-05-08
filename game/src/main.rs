@@ -4,9 +4,9 @@ use rand;
 use std::{f32::consts::PI, usize};
 use winit;
 
-const NUM_MARBLES: usize = 10;
+const NUM_MARBLES: usize = 0;
 const NUM_TERRAIN_BOXES: usize = 10;
-const G: f32 = 9.8;
+const GRAVITY: f32 = 9.8;
 
 #[derive(Clone, Debug)]
 pub struct Player {
@@ -33,7 +33,7 @@ impl Player {
         );
     }
     fn integrate(&mut self) {
-        self.velocity += ((self.rot * self.acc) + Vec3::new(0.0, -G, 0.0)) * DT;
+        self.velocity += ((self.rot * self.acc) + Vec3::new(0.0, -GRAVITY, 0.0)) * DT;
         if self.velocity.magnitude() > Self::MAX_SPEED {
             self.velocity = self.velocity.normalize_to(Self::MAX_SPEED);
         }
@@ -143,7 +143,8 @@ impl Camera for OrbitCamera {
 pub struct Marbles {
     pub body: Vec<Sphere>,
     pub velocity: Vec<Vec3>,
-    pub hp: Vec<usize>
+    pub acc: Vec<Vec3>,
+    pub hp: Vec<usize>,
 }
 
 // Ziang: I think we can base our game with marbles & boxes...
@@ -157,13 +158,27 @@ impl Marbles {
         );
     }
     fn integrate(&mut self) {
-        for vel in self.velocity.iter_mut() {
-            *vel += Vec3::new(0.0, -G, 0.0) * DT;
-        }
-        for (body, vel) in self.body.iter_mut().zip(self.velocity.iter()) {
-            body.c += vel * DT;
+        // for (vel,acc) in self.velocity.iter_mut().zip(self.acc.iter_mut()){
+        //     //*vel += Vec3::new(0.0, -GRAVITY, 0.0) * DT;
+        //     //Implement projectory motion for player-controlled marble
+        //     *vel+=*acc * DT;
+        //     println!("acc is:{:?}",acc);
+        //     println!("vel is:{:?}",vel);
+        // }
+        // for (body, vel) in self.body.iter_mut().zip(self.velocity.iter()) {
+        //     body.c += vel * DT;
+        //     println!("body.c is:{:?}",body.c);
+        // }
+        for ((body, vel),acc) in self.body.iter_mut().zip(self.velocity.iter_mut()).zip(self.acc.iter()) {
+            *vel += acc * DT;
+            body.c += *vel * DT;
+            println!("acc is:{:?}",acc);
+            println!("vel is:{:?}",vel);
+            println!("body.c is:{:?}",body.c);
         }
     }
+    
+
     fn iter_mut(&mut self) -> impl Iterator<Item = (&mut Sphere, &mut Vec3)> {
         self.body.iter_mut().zip(self.velocity.iter_mut())
     }
@@ -273,7 +288,7 @@ impl Terrain_Boxes {
     }
     fn integrate(&mut self) {
         for vel in self.velocity.iter_mut() {
-            *vel += Vec3::new(0.0, -G, 0.0) * DT;
+            *vel += Vec3::new(0.0, -GRAVITY, 0.0) * DT;
         }
         for (body, vel) in self.body.iter_mut().zip(self.velocity.iter()) {
             body.c += vel * DT;
@@ -342,7 +357,8 @@ impl<C: Camera> engine3d::Game for Game<C> {
                 })
                 .collect::<Vec<_>>(),
             velocity: vec![Vec3::zero(); NUM_MARBLES],
-            hp: vec![5; NUM_MARBLES],
+            acc: vec![Vec3::new(0.0,-GRAVITY,0.0); NUM_MARBLES],
+            hp: vec![5; NUM_MARBLES]
         };
 
         let mut rng = rand::thread_rng();
@@ -469,10 +485,15 @@ impl<C: Camera> engine3d::Game for Game<C> {
             });
             self.marbles.velocity.push(Vec3 {
                 x: 0.0,
-                y: 0.0,
-                z: 3.0,
+                y: 10.0,
+                z: 8.0,
             });
             self.marbles.hp.push(5);
+            self.marbles.acc.push(Vec3 {
+                x: 0.0,
+                y: -9.8,
+                z: 0.0,
+            });
         }
 
         // orbit camera
@@ -556,7 +577,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
             assert_eq!(*pa, 0);
             self.player.velocity *= 0.98;
         }
-
+        //Remove marbles
         clean(&mut self.marbles.body,&mut marbles_to_remove);
         clean(&mut self.marbles.velocity,&mut marbles_to_remove);
         clean(&mut self.marbles.hp,&mut marbles_to_remove);
