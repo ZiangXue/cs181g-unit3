@@ -48,7 +48,7 @@ impl Shape for Plane {
         self.n * self.d
     }
 
-    fn mass(&mut self, density: f32) -> f32 {
+    fn mass(&mut self, _density: f32) -> f32 {
         0.0
     }
 }
@@ -109,7 +109,7 @@ impl Shape for Ray {
         self.p.to_vec()
     }
 
-    fn mass(&mut self, density: f32) -> f32 {
+    fn mass(&mut self, _density: f32) -> f32 {
         0.0
     }
 }

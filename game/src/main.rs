@@ -1,5 +1,5 @@
 use cgmath::Point3;
-use engine3d::{collision, events::*, geom::*, render::InstanceGroups, run, Engine, DT};
+use engine3d::{DT, Engine, collision::{self, norm}, events::*, geom::*, render::InstanceGroups, run};
 use rand;
 use std::{f32::consts::PI, usize};
 use winit;
@@ -88,6 +88,66 @@ impl Camera for FPCamera {
 }
 
 #[derive(Clone, Debug)]
+pub struct FixOrbitCamera {
+    pub pitch: f32,
+    pub yaw: f32,
+    pub distance: f32,
+    player_pos: Pos3,
+    player_rot: Quat,
+}
+
+impl Camera for FixOrbitCamera {
+    fn new() -> Self {
+        Self {
+            pitch: 0.3,
+            yaw: 0.0,
+            distance: 5.0,
+            player_pos: Pos3::new(0.0, 0.0, 0.0),
+            player_rot: Quat::new(1.0, 0.0, 0.0, 0.0),
+        }
+    }
+    fn update(&mut self, _events: &engine3d::events::Events, player: &Player) {
+        /* disable player control over camera
+        let (dx, dy) = events.mouse_delta();
+        self.pitch += dy / 100.0;
+        self.pitch = self.pitch.clamp(-PI / 4.0, PI / 4.0);
+
+        self.yaw += dx / 100.0;
+        self.yaw = self.yaw.clamp(-PI / 4.0, PI / 4.0);
+        
+        if events.key_pressed(KeyCode::Up) {
+            self.distance -= 0.5;
+        }
+        if events.key_pressed(KeyCode::Down) {
+            self.distance += 0.5;
+        }*/
+        self.player_pos = player.body.c;
+        self.player_rot = player.rot;
+        // TODO: when player moves, slightly move backwards from player. Effect maginitude defined here.
+        if (player.acc.z)>0.0 {
+            self.distance = (self.distance + 0.03).clamp(5.0, 6.0);
+        } else{
+            self.distance = (self.distance - 0.03).clamp(5.0, 6.0);
+        }
+    }
+    fn update_camera(&self, c: &mut engine3d::camera::Camera) {
+        // The camera should point at the player
+        c.target = self.player_pos;
+        // And rotated around the player's position and offset backwards
+        let camera_rot = self.player_rot
+            * Quat::from(cgmath::Euler::new(
+                cgmath::Rad(self.pitch),
+                cgmath::Rad(self.yaw),
+                cgmath::Rad(0.0),
+            ));
+        let offset = camera_rot * Vec3::new(0.0, 0.0, -self.distance);
+        c.eye = self.player_pos + offset;
+        // To be fancy, we'd want to make the camera's eye to be an object in the world and whose rotation is locked to point towards the player, and whose distance from the player is locked, and so on---so we'd have player OR camera movements apply accelerations to the camera which could be "beaten" by collision.
+    }
+}
+
+
+#[derive(Clone, Debug)]
 pub struct OrbitCamera {
     pub pitch: f32,
     pub yaw: f32,
@@ -170,11 +230,12 @@ impl Marbles {
         //     println!("body.c is:{:?}",body.c);
         // }
         for ((body, vel),acc) in self.body.iter_mut().zip(self.velocity.iter_mut()).zip(self.acc.iter()) {
+            // The latest implementation enforces a -GRAVITY y acceleration on all newly created marbles.
             *vel += acc * DT;
             body.c += *vel * DT;
-            println!("acc is:{:?}",acc);
-            println!("vel is:{:?}",vel);
-            println!("body.c is:{:?}",body.c);
+            //println!("acc is:{:?}",acc);
+            //println!("vel is:{:?}",vel);
+            //println!("body.c is:{:?}",body.c);
         }
     }
     
@@ -449,22 +510,24 @@ impl<C: Camera> engine3d::Game for Game<C> {
         // TODO show how spherecasting could work?  camera pseudo-entity collision check?  camera entity for real?
         // self.camera_controller.update(engine);
 
+
+        // player control over position goes here
         self.player.acc = Vec3::zero();
         if engine.events.key_held(KeyCode::W) {
-            self.player.acc.z = 1.0;
+            self.player.acc.z = 3.0;
         } else if engine.events.key_held(KeyCode::S) {
-            self.player.acc.z = -1.0;
+            self.player.acc.z = -3.0;
         }
-
         if engine.events.key_held(KeyCode::A) {
             self.player.acc.x = 1.0;
         } else if engine.events.key_held(KeyCode::D) {
             self.player.acc.x = -1.0;
         }
-        if self.player.acc.magnitude2() > 1.0 {
-            self.player.acc = self.player.acc.normalize();
+        if self.player.acc.magnitude2() > 9.0 {
+            self.player.acc = self.player.acc.normalize_to(3.0);
         }
 
+        // player control over direction goes here
         if engine.events.key_held(KeyCode::Q) {
             self.player.omega = Vec3::unit_y();
         } else if engine.events.key_held(KeyCode::E) {
@@ -474,20 +537,18 @@ impl<C: Camera> engine3d::Game for Game<C> {
         }
 
         if engine.events.key_pressed(KeyCode::Space) {
-            //let forward = self.player.rot.v.normalize();
+            // A unit vector that points to uphead uphigh from facing.
+            // shooting direction and velocity defined here.
+            let forward = (self.player.rot*Vec3{x:0.0,y:0.5,z:1.0}).normalize();
             self.marbles.body.push(Sphere {
                 c: Pos3 {
-                    x: self.player.body.c.x,
-                    y: 0.25,
-                    z: self.player.body.c.z + 0.3,
+                    x: self.player.body.c.x + forward.x * 0.3,
+                    y: self.player.body.c.y + forward.y * 0.3,
+                    z: self.player.body.c.z + forward.z * 0.3,
                 },
-                r: 0.5,
+                r: 0.2,
             });
-            self.marbles.velocity.push(Vec3 {
-                x: 0.0,
-                y: 10.0,
-                z: 8.0,
-            });
+            self.marbles.velocity.push(forward.normalize_to(15.0));
             self.marbles.hp.push(5);
             self.marbles.acc.push(Vec3 {
                 x: 0.0,
@@ -597,5 +658,5 @@ fn main() {
     env_logger::init();
     let title = env!("CARGO_PKG_NAME");
     let window = winit::window::WindowBuilder::new().with_title(title);
-    run::<GameData, Game<OrbitCamera>>(window, std::path::Path::new("content"));
+    run::<GameData, Game<FixOrbitCamera>>(window, std::path::Path::new("content"));
 }

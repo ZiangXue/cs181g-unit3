@@ -213,6 +213,6 @@ fn vel_distribute(v_1: Vec3, v_2: Vec3, m_1: f32, m_2: f32, direction: Vec3) -> 
 }
 
 // return norm of a Vec3
-fn norm(v_1: Vec3) -> f32 {
+pub fn norm(v_1: Vec3) -> f32 {
     (v_1.dot(v_1) as f32).sqrt()
 }
