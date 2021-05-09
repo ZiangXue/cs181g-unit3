@@ -335,6 +335,45 @@ impl Terrain_Boxes {
             y: 0.0,
             z: 0.0,
         });
+        self.hp.push(100);
+    }
+
+    fn add_scaled_cube(&mut self, pos: Pos3, scale:f32) {
+        let x_axis = Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let y_axis = Vec3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let z_axis = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        };
+        let half_sizes = Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        } * scale;
+        self.body.push(Box {
+            c: pos,
+            axes: Mat3 {
+                x: x_axis,
+                y: y_axis,
+                z: z_axis,
+            } * scale,
+            half_sizes,
+        });
+        self.velocity.push(Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
+        self.hp.push(100);
     }
 
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
@@ -355,7 +394,7 @@ impl Terrain_Boxes {
             body.c += vel * DT;
         }
     }
-    fn iter_mut(&mut self) -> impl Iterator<Item = (&mut Box, &mut Vec3)> {
+    fn _iter_mut(&mut self) -> impl Iterator<Item = (&mut Box, &mut Vec3)> {
         self.body.iter_mut().zip(self.velocity.iter_mut())
     }
 }
@@ -372,6 +411,8 @@ struct Game<Cam: Camera> {
     mm: Vec<collision::Contact<usize>>,
     mw: Vec<collision::Contact<usize>>,
     tw: Vec<collision::Contact<usize>>,
+    mt: Vec<collision::Contact<usize>>,
+    pt: Vec<collision::Contact<usize>>,
 }
 struct GameData {
     marble_model: engine3d::assets::ModelRef,
@@ -423,11 +464,21 @@ impl<C: Camera> engine3d::Game for Game<C> {
         };
 
         let mut rng = rand::thread_rng();
+        let mut terrain_boxes =Terrain_Boxes { body:vec![], velocity:vec![], hp:vec![]};
+        for i in 0..50{
+            let scale = 0.3 as f32;
+            let pos_1 = Pos3{x:-2.0, y:scale, z:(i as f32)*scale*2.0};
+            let pos_2 = Pos3{x:2.0, y:scale, z:(i as f32)*scale*2.0};
+            terrain_boxes.add_scaled_cube(pos_1, scale);
+            terrain_boxes.add_scaled_cube(pos_2, scale);
+        }
+
+        /*
         let terrain_boxes = Terrain_Boxes {
             body: (0..NUM_TERRAIN_BOXES)
                 .map(move |_x| {
                     let x = rng.gen_range(-5.0..5.0);
-                    let y = rng.gen_range(1.0..5.0);
+                    let y = 5.0;
                     let z = rng.gen_range(-5.0..5.0);
                     let x_axis = Vec3 {
                         x: 1.0,
@@ -462,7 +513,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
                 .collect::<Vec<_>>(),
             velocity: vec![Vec3::zero(); NUM_TERRAIN_BOXES],
             hp: vec![5; NUM_TERRAIN_BOXES],
-        };
+        };*/
 
         let wall_model = engine.load_model("floor.obj");
         let marble_model = engine.load_model("sphere.obj");
@@ -482,6 +533,8 @@ impl<C: Camera> engine3d::Game for Game<C> {
                 pm: vec![],
                 pw: vec![],
                 tw: vec![],
+                mt: vec![],
+                pt: vec![],
             },
             GameData {
                 wall_model,
@@ -500,7 +553,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
         self.wall.render(rules, igs);
         self.marbles.render(rules, igs);
         self.player.render(rules, igs);
-        //self.terrain_boxes.render(rules,igs);
+        self.terrain_boxes.render(rules,igs);
         // self.camera.render(rules, igs);
     }
     fn update(&mut self, _rules: &Self::StaticData, engine: &mut Engine) {
@@ -585,14 +638,21 @@ impl<C: Camera> engine3d::Game for Game<C> {
         self.pm.clear();
         self.pw.clear();
         self.tw.clear();
+        self.mt.clear();
+        self.pt.clear();
         let mut pb = [self.player.body];
         let mut pv = [self.player.velocity];
         let mut ph = [self.player.hp];
         collision::gather_contacts_ab(&pb, &self.marbles.body, &mut self.pm);
         collision::gather_contacts_ab(&pb, &[self.wall.body], &mut self.pw);
         collision::gather_contacts_ab(&self.marbles.body, &[self.wall.body], &mut self.mw);
-        //collision::gather_contacts_ab(&self.terrain_boxes.body, &[self.wall.body], &mut self.tw);
+        collision::gather_contacts_ab(&self.terrain_boxes.body, &[self.wall.body], &mut self.tw);
         collision::gather_contacts_aa(&self.marbles.body, &mut self.mm);
+        collision::gather_contacts_ab(&self.terrain_boxes.body, &self.marbles.body, &mut self.mt);
+        collision::gather_contacts_ab(&self.terrain_boxes.body, &pb, &mut self.pt);
+
+
+        
         collision::restitute_dyn_stat(&mut pb, &mut pv, &[self.wall.body], &mut self.pw);
         collision::restitute_dyn_stat(
             &mut self.marbles.body,
@@ -600,14 +660,15 @@ impl<C: Camera> engine3d::Game for Game<C> {
             &[self.wall.body],
             &mut self.mw,
         );
-        /*collision::restitute_dyn_stat(
+        collision::restitute_dyn_stat(
             &mut self.terrain_boxes.body,
             &mut self.terrain_boxes.velocity,
             &[self.wall.body],
             &mut self.tw,
-        );*/
+        );
         let mut marbles_to_remove = vec![];
         let mut player_to_remove = vec![];
+        let mut terrains_to_remove = vec![];
         collision::restitute_dyns(
             &mut self.marbles.body,
             &mut self.marbles.velocity,
@@ -626,6 +687,28 @@ impl<C: Camera> engine3d::Game for Game<C> {
             &mut player_to_remove,
             &mut marbles_to_remove,
         );
+        collision::restitute_dyn_dyn(
+            &mut self.terrain_boxes.body,
+            &mut self.terrain_boxes.velocity,
+            &mut self.terrain_boxes.hp,
+            &mut self.marbles.body,
+            &mut self.marbles.velocity,
+            &mut self.marbles.hp,
+            &mut self.mt,
+            &mut terrains_to_remove,
+            &mut marbles_to_remove,
+        );
+        collision::restitute_dyn_dyn(
+            &mut self.terrain_boxes.body,
+            &mut self.terrain_boxes.velocity,
+            &mut self.terrain_boxes.hp,
+            &mut vec![self.player.body],
+            &mut vec![self.player.velocity],
+            &mut vec![self.player.hp],
+            &mut self.pt,
+            &mut terrains_to_remove,
+            &mut player_to_remove,
+        );
         self.player.body = pb[0];
         self.player.velocity = pv[0];
 
@@ -637,6 +720,10 @@ impl<C: Camera> engine3d::Game for Game<C> {
             // apply "friction" to players on the ground
             assert_eq!(*pa, 0);
             self.player.velocity *= 0.98;
+        }
+        for collision::Contact { a: ta, .. } in self.tw.iter() {
+            // apply "friction" to players on the ground
+            self.terrain_boxes.velocity[*ta] *= 0.98;
         }
         //Remove marbles
         clean(&mut self.marbles.body,&mut marbles_to_remove);

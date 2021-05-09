@@ -163,19 +163,37 @@ impl Collide<Plane> for Sphere {
     }
 }
 
+impl Collide<Sphere> for Box{
+    fn touching(&self, s:&Sphere) -> bool{
+        //assume AA:
+        ((self.c.x - s.c.x).abs() < self.half_sizes.x +s.r) || ((self.c.y - s.c.y).abs() < self.half_sizes.y +s.r) || ((self.c.z - s.c.z).abs() < self.half_sizes.z +s.r)
+    }
+
+    fn disp(&self, s: &Sphere) -> Option<Vec3> {
+        let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x +s.r);
+        let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y +s.r);
+        let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z +s.r);
+        let dist = Vec3{ x, y, z};
+        if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
+            None
+        } else {
+            Some(dist)
+        }
+    }
+}
+
 impl Collide<Plane> for Box {
     fn touching(&self, p: &Plane) -> bool {
         // Assume AA: find the distance from center to surface
-        self.c.y - self.half_sizes.y < p.d
+        self.c.y -self.half_sizes.y < p.d
     }
     fn disp(&self, p: &Plane) -> Option<Vec3> {
-        // Find the distance of the sphere's center to the plane
         let dist = self.c.y - self.half_sizes.y;
-        if dist.abs() <= p.d {
+        if dist < p.d {
             // If we offset from the sphere position opposite the normal,
             // we'll end up hitting the plane at `dist` units away.  So
             // the displacement is just the plane's normal * dist.
-            Some(p.n * (self.half_sizes.y - dist))
+            Some(p.n * (-dist))
         } else {
             None
         }
