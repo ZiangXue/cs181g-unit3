@@ -163,6 +163,25 @@ impl Collide<Plane> for Sphere {
     }
 }
 
+impl Collide<Box> for Sphere{
+    fn touching(&self, b:&Box) -> bool{
+        //assume AA:
+        ((b.c.x - self.c.x).abs() < b.half_sizes.x +self.r) || ((b.c.y - self.c.y).abs() < b.half_sizes.y +self.r) || ((b.c.z - self.c.z).abs() < b.half_sizes.z +self.r)
+    }
+
+    fn disp(&self, s: &Box) -> Option<Vec3> {
+        let x = (self.c.x - s.c.x) - (s.half_sizes.x +self.r);
+        let y = (self.c.y - s.c.y) - (s.half_sizes.y +self.r);
+        let z = (self.c.z - s.c.z) - (s.half_sizes.z +self.r);
+        let dist = Vec3{ x, y, z};
+        if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
+            None
+        } else {
+            Some(dist)
+        }
+    }
+}
+
 impl Collide<Sphere> for Box{
     fn touching(&self, s:&Sphere) -> bool{
         //assume AA:
