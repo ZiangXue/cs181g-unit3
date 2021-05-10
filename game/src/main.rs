@@ -1,6 +1,6 @@
 use cgmath::Point3;
 use engine3d::{DT, Engine, collision::{self, norm}, events::*, geom::*, render::InstanceGroups, run};
-use rand;
+use rand::{self, Rng};
 use std::{f32::consts::PI, usize};
 use winit;
 
@@ -124,10 +124,15 @@ impl Camera for FixOrbitCamera {
         self.player_pos = player.body.c;
         self.player_rot = player.rot;
         // TODO: when player moves, slightly move backwards from player. Effect maginitude defined here.
+        let mut rng = rand::thread_rng();
         if (player.acc.z)>0.0 {
             self.distance = (self.distance + 0.03).clamp(5.0, 6.0);
+            self.pitch = (self.pitch + rng.gen_range(-0.001..0.001)).clamp(0.295,0.305);
+            self.yaw = (self.yaw + rng.gen_range(-0.001..0.001)).clamp(-0.005,0.005);
         } else{
             self.distance = (self.distance - 0.03).clamp(5.0, 6.0);
+            self.pitch = 0.3;
+            self.yaw = 0.0;
         }
     }
     fn update_camera(&self, c: &mut engine3d::camera::Camera) {
@@ -405,6 +410,44 @@ pub struct Heart {
     pub hp: Vec<usize>,
 }
 impl Heart {
+    fn add_standard(&mut self, pos: Pos3) {
+        let x_axis = Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let y_axis = Vec3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let z_axis = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        };
+        let half_sizes = Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        };
+        self.body.push(Box {
+            c: pos,
+            axes: Mat3 {
+                x: x_axis,
+                y: y_axis,
+                z: z_axis,
+            },
+            half_sizes,
+        });
+        self.velocity.push(Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
+        self.hp.push(100);
+    }
+
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render_batch(
             rules.heart_model,
@@ -504,53 +547,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
             terrain_boxes.add_scaled_cube(pos_2, scale);
         }
         let mut heart =Heart { body:vec![], velocity:vec![], hp:vec![]};
-        for i in 0..50{
-            let scale = 0.3 as f32;
-            let pos_1 = Pos3{x:-2.0, y:scale, z:(i as f32)*scale*2.0};
-            let pos_2 = Pos3{x:2.0, y:scale, z:(i as f32)*scale*2.0};
-        }
-
-        /*
-        let terrain_boxes = Terrain_Boxes {
-            body: (0..NUM_TERRAIN_BOXES)
-                .map(move |_x| {
-                    let x = rng.gen_range(-5.0..5.0);
-                    let y = 5.0;
-                    let z = rng.gen_range(-5.0..5.0);
-                    let x_axis = Vec3 {
-                        x: 1.0,
-                        y: 0.0,
-                        z: 0.0,
-                    };
-                    let y_axis = Vec3 {
-                        x: 0.0,
-                        y: 1.0,
-                        z: 0.0,
-                    };
-                    let z_axis = Vec3 {
-                        x: 0.0,
-                        y: 0.0,
-                        z: 1.0,
-                    };
-                    let half_sizes = Vec3 {
-                        x: 1.0,
-                        y: 1.0,
-                        z: 1.0,
-                    };
-                    Box {
-                        c: Pos3::new(x, y, z),
-                        axes: Mat3 {
-                            x: x_axis,
-                            y: y_axis,
-                            z: z_axis,
-                        },
-                        half_sizes,
-                    }
-                })
-                .collect::<Vec<_>>(),
-            velocity: vec![Vec3::zero(); NUM_TERRAIN_BOXES],
-            hp: vec![5; NUM_TERRAIN_BOXES],
-        };*/
+        //heart.add_standard(Pos3{x:0.0,y:0.0,z:10.0});
 
         let wall_model = engine.load_model("floor.obj");
         let marble_model = engine.load_model("sphere.obj");
