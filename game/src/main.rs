@@ -398,7 +398,36 @@ impl Terrain_Boxes {
         self.body.iter_mut().zip(self.velocity.iter_mut())
     }
 }
+#[derive(Clone, Debug)]
+pub struct Heart {
+    pub body: Vec<Box>,
+    pub velocity: Vec<Vec3>,
+    pub hp: Vec<usize>,
+}
+impl Heart {
+    fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
+        igs.render_batch(
+            rules.heart_model,
+            self.body.iter().map(|body| engine3d::render::InstanceRaw {
+                model: (Mat4::from_translation(body.c.to_vec())
+                    * Mat4::from_scale(body.half_sizes.x))
+                .into(),
+            }),
+        );
+    }
+    fn integrate(&mut self) {
+        for vel in self.velocity.iter_mut() {
+            *vel += Vec3::new(0.0, -GRAVITY, 0.0) * DT;
+        }
+        for (body, vel) in self.body.iter_mut().zip(self.velocity.iter()) {
+            body.c += vel * DT;
+        }
+    }
+    fn _iter_mut(&mut self) -> impl Iterator<Item = (&mut Box, &mut Vec3)> {
+        self.body.iter_mut().zip(self.velocity.iter_mut())
+    }
 
+}
 // Ziang: should we allow for
 struct Game<Cam: Camera> {
     marbles: Marbles,
@@ -406,6 +435,7 @@ struct Game<Cam: Camera> {
     terrain_boxes: Terrain_Boxes,
     player: Player,
     camera: Cam,
+    heart: Heart,
     pm: Vec<collision::Contact<usize>>,
     pw: Vec<collision::Contact<usize>>,
     mm: Vec<collision::Contact<usize>>,
@@ -419,6 +449,7 @@ struct GameData {
     wall_model: engine3d::assets::ModelRef,
     player_model: engine3d::assets::ModelRef,
     terrain_box_model: engine3d::assets::ModelRef,
+    heart_model: engine3d::assets::ModelRef
 }
 
 impl<C: Camera> engine3d::Game for Game<C> {
@@ -472,6 +503,12 @@ impl<C: Camera> engine3d::Game for Game<C> {
             terrain_boxes.add_scaled_cube(pos_1, scale);
             terrain_boxes.add_scaled_cube(pos_2, scale);
         }
+        let mut heart =Heart { body:vec![], velocity:vec![], hp:vec![]};
+        for i in 0..50{
+            let scale = 0.3 as f32;
+            let pos_1 = Pos3{x:-2.0, y:scale, z:(i as f32)*scale*2.0};
+            let pos_2 = Pos3{x:2.0, y:scale, z:(i as f32)*scale*2.0};
+        }
 
         /*
         let terrain_boxes = Terrain_Boxes {
@@ -519,6 +556,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
         let marble_model = engine.load_model("sphere.obj");
         let player_model = engine.load_model("capsule.obj");
         let terrain_box_model = engine.load_model("box.obj");
+        let heart_model = engine.load_model("sphere.obj");
         (
             Self {
                 // camera_controller,
@@ -527,6 +565,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
                 player,
                 terrain_boxes,
                 camera,
+                heart,
                 // TODO nice this up somehow
                 mm: vec![],
                 mw: vec![],
@@ -541,6 +580,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
                 marble_model,
                 player_model,
                 terrain_box_model,
+                heart_model
             },
         )
     }
@@ -554,6 +594,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
         self.marbles.render(rules, igs);
         self.player.render(rules, igs);
         self.terrain_boxes.render(rules,igs);
+        self.heart.render(rules,igs);
         // self.camera.render(rules, igs);
     }
     fn update(&mut self, _rules: &Self::StaticData, engine: &mut Engine) {
@@ -651,6 +692,10 @@ impl<C: Camera> engine3d::Game for Game<C> {
         collision::gather_contacts_ab(&self.terrain_boxes.body, &self.marbles.body, &mut self.mt);
         collision::gather_contacts_ab(&self.terrain_boxes.body, &pb, &mut self.pt);
 
+        //Switched positions for Sphere::Collide<Box> 
+        // collision::gather_contacts_ab(&self.marbles.body, &self.terrain_boxes.body, &mut self.mt);
+        // collision::gather_contacts_ab(&pb, &self.terrain_boxes.body, &mut self.pt);
+
 
         
         collision::restitute_dyn_stat(&mut pb, &mut pv, &[self.wall.body], &mut self.pw);
@@ -698,6 +743,13 @@ impl<C: Camera> engine3d::Game for Game<C> {
             &mut terrains_to_remove,
             &mut marbles_to_remove,
         );
+        //Switched from dyndyn to dynstat
+        // collision::restitute_dyn_stat(
+        //     &mut self.marbles.body,
+        //     &mut self.terrain_boxes.velocity,
+        //     &mut self.terrain_boxes.body,
+        //     &mut self.mt,
+        // );
         collision::restitute_dyn_dyn(
             &mut self.terrain_boxes.body,
             &mut self.terrain_boxes.velocity,
