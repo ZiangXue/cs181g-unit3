@@ -12,7 +12,7 @@ impl Light {
         Self {
             pos: [pos.x, pos.y, pos.z, 1.0],
             // dir:[0.0,0.0,0.0,0.0],
-            color: [color.x, color.y, color.z, 0.0],
+            color: [color.x, color.y, color.z, 1.0],
         }
     }
     // pub fn directed(dir:Vec3, color:Vec3) -> Self {

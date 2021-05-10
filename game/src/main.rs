@@ -1,5 +1,5 @@
 use cgmath::Point3;
-use engine3d::{DT, Engine, collision::{self, norm}, events::*, geom::*, render::InstanceGroups, run};
+use engine3d::{DT, Engine, collision::{self, norm}, events::*, geom::*, render::InstanceGroups, run, lights::Light};
 use rand;
 use std::{f32::consts::PI, usize};
 use winit;
@@ -519,6 +519,10 @@ impl<C: Camera> engine3d::Game for Game<C> {
         let marble_model = engine.load_model("sphere.obj");
         let player_model = engine.load_model("capsule.obj");
         let terrain_box_model = engine.load_model("box.obj");
+        engine.set_lights(vec![Light::point(
+            Pos3::new(0.0, -10.0, 0.0),
+            Vec3::new(1.0, 1.0, 1.0),
+        )]);
         (
             Self {
                 // camera_controller,

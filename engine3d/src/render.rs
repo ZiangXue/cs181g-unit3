@@ -1,4 +1,4 @@
-use crate::anim::{self, DrawAnimated};
+use crate::{anim::{self, DrawAnimated}, lights::Light};
 use crate::assets::{Assets, ModelRef};
 use crate::camera::Camera;
 use crate::model::*;
@@ -30,7 +30,7 @@ pub(crate) struct Render {
     bone_bind_group: wgpu::BindGroup,
     pub(crate) ambient: f32,
     light_ambient_buffer: wgpu::Buffer,
-    lights: Vec<crate::lights::Light>,
+    lights: Vec<Light>,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
     depth_texture: texture::Texture,
@@ -142,13 +142,9 @@ impl Render {
             }],
             label: Some("uniform_bind_group"),
         });
-        use crate::geom::*;
-        let lights = vec![crate::lights::Light::point(
-            Pos3::new(0.0, 10.0, 0.0),
-            Vec3::new(1.0, 1.0, 1.0),
-        )];
+        let lights = vec![];
         let light_uniform_size =
-            (LIGHT_MAX * std::mem::size_of::<crate::lights::Light>()) as wgpu::BufferAddress;
+            (LIGHT_MAX * std::mem::size_of::<Light>()) as wgpu::BufferAddress;
         let light_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Lights buffer"),
             size: light_uniform_size,
@@ -168,7 +164,7 @@ impl Render {
                             has_dynamic_offset: false,
                             min_binding_size: wgpu::BufferSize::new(
                                 LIGHT_MAX as u64
-                                    * std::mem::size_of::<crate::lights::Light>()
+                                    * std::mem::size_of::<Light>()
                                         as wgpu::BufferAddress,
                             ),
                         },
@@ -190,7 +186,7 @@ impl Render {
                 label: Some("light_bind_group_layout"),
             });
 
-        let ambient = 1.0;
+        let ambient = 0.0;
 
         let light_ambient_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("light_ambient"),
@@ -252,11 +248,10 @@ impl Render {
             label: Some("bone_bind_group"),
         });
 
-        let static_vs_module =
-            device.create_shader_module(&wgpu::include_spirv!("shader.vert.spv"));
-        let bones_vs_module =
-            device.create_shader_module(&wgpu::include_spirv!("shader_bones.vert.spv"));
-        let fs_module = device.create_shader_module(&wgpu::include_spirv!("shader.frag.spv"));
+        let static_module =
+            device.create_shader_module(&wgpu::include_spirv!(env!("model_shader.spv")));
+        let bones_module =
+            device.create_shader_module(&wgpu::include_spirv!(env!("bone_shader.spv")));
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &sc_desc, "depth_texture");
@@ -276,13 +271,13 @@ impl Render {
                 label: Some("Static Render Pipeline"),
                 layout: Some(&static_render_pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &static_vs_module,
-                    entry_point: "main",
+                    module: &static_module,
+                    entry_point: "main_vs",
                     buffers: &[ModelVertex::desc(), InstanceRaw::desc()],
                 },
                 fragment: Some(wgpu::FragmentState {
-                    module: &fs_module,
-                    entry_point: "main",
+                    module: &static_module,
+                    entry_point: "main_fs",
                     targets: &[wgpu::ColorTargetState {
                         format: sc_desc.format,
                         alpha_blend: wgpu::BlendState::REPLACE,
@@ -331,20 +326,20 @@ impl Render {
                 label: Some("Animated Render Pipeline"),
                 layout: Some(&animated_render_pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &bones_vs_module,
-                    entry_point: "main",
+                    module: &bones_module,
+                    entry_point: "main_vs",
                     buffers: &[ModelVertex::desc(), InstanceRaw::desc()],
                 },
                 fragment: Some(wgpu::FragmentState {
-                    module: &fs_module,
-                    entry_point: "main",
+                    module: &static_module,
+                    entry_point: "main_fs",
                     targets: &[wgpu::ColorTargetState {
                         format: sc_desc.format,
                         alpha_blend: wgpu::BlendState::REPLACE,
                         color_blend: wgpu::BlendState {
                             operation: wgpu::BlendOperation::Add,
                             src_factor: wgpu::BlendFactor::SrcAlpha,
-                            dst_factor: wgpu::BlendFactor::OneMinusDstAlpha,
+                            dst_factor: wgpu::BlendFactor::OneMinusDstAlpha
                         },
                         write_mask: wgpu::ColorWrite::ALL,
                     }],
@@ -406,7 +401,7 @@ impl Render {
             .write_buffer(&self.light_ambient_buffer, 0, bytemuck::cast_slice(&[amb]));
     }
 
-    pub(crate) fn set_lights(&mut self, ls: Vec<crate::lights::Light>) {
+    pub(crate) fn set_lights(&mut self, ls: Vec<Light>) {
         assert!(ls.len() < LIGHT_MAX);
         self.lights = ls;
         self.queue
@@ -634,6 +629,7 @@ impl InstanceRaw {
             // This means that our shaders will only change to use the next
             // instance when the shader starts processing a new instance
             step_mode: wgpu::InputStepMode::Instance,
+            //attributes: &wgpu::vertex_attr_array![5 => Float4, 6 => Float4, 4 => Float2, 5 => Float2],
             attributes: &[
                 wgpu::VertexAttribute {
                     offset: 0,

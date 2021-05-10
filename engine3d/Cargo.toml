@@ -21,7 +21,4 @@ version="0.15.2"
 features=["utils","import","names"]
 
 [build-dependencies]
-anyhow = "1.0"
-fs_extra = "1.2"
-glob = "0.3"
-shaderc = "0.7"
+spirv-builder = {git = "https://github.com/EmbarkStudios/rust-gpu", default-features = false, features = [ "use-compiled-tools" ], rev = "943f09fef7b7ac305432d0bc899b54716c1e765b"}
