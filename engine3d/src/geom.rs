@@ -12,6 +12,7 @@ pub trait Shape {
     fn translate(&mut self, v: Vec3);
     fn pos(&mut self) -> Vec3;
     fn mass(&mut self, density: f32) -> f32;
+    fn rot(&mut self, omega:Vec3);
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -33,6 +34,10 @@ impl Shape for Sphere {
     fn mass(&mut self, density: f32) -> f32 {
         self.r.powi(3) * PI * 4.0 / 3.0 * density
     }
+
+    fn rot(&mut self, omega:Vec3) {
+        self.omega = omega;
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -52,6 +57,9 @@ impl Shape for Plane {
 
     fn mass(&mut self, _density: f32) -> f32 {
         0.0
+    }
+
+    fn rot(&mut self, omega:Vec3) {
     }
 }
 
@@ -76,6 +84,10 @@ impl Shape for Box {
     fn mass(&mut self, density: f32) -> f32 {
         self.half_sizes.x * self.half_sizes.y * self.half_sizes.z * 8.0 * density
     }
+
+    fn rot(&mut self, omega:Vec3) {
+        self.omega = omega;
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -96,6 +108,9 @@ impl Shape for AABB {
     fn mass(&mut self, density: f32) -> f32 {
         self.half_sizes.x * self.half_sizes.y * self.half_sizes.z * 8.0 * density
     }
+
+    fn rot(&mut self, omega:Vec3) {
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -115,6 +130,9 @@ impl Shape for Ray {
 
     fn mass(&mut self, _density: f32) -> f32 {
         0.0
+    }
+
+    fn rot(&mut self, omega:Vec3) {
     }
 }
 

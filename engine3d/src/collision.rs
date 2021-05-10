@@ -54,8 +54,8 @@ pub fn restitute_dyn_dyn<S1: Shape, S2: Shape>(
     S1: Collide<S2>,
 {
     contacts.sort_unstable_by(|a, b| b.mtv.magnitude2().partial_cmp(&a.mtv.magnitude2()).unwrap());
-    let mut a_to_remove = vec![];
-    let mut b_to_remove = vec![];
+    //let mut a_to_remove = vec![];
+    //let mut b_to_remove = vec![];
     // That can bump into each other in perfectly elastic collisions!
     for c in contacts.iter() {
         let a = c.a;
@@ -64,10 +64,27 @@ pub fn restitute_dyn_dyn<S1: Shape, S2: Shape>(
         // cause issues, but those will always be hard to solve with
         // this kind of technique.
         if let Some(disp) = ashapes[a].disp(&bshapes[b]) {
+            let direction = direction(ashapes[a].pos(), bshapes[b].pos());
+            let (a_gain, b_gain) = vel_distribute(
+                avels[a],
+                bvels[b],
+                ashapes[a].mass(SAMPLE_DENSITY),
+                bshapes[b].mass(SAMPLE_DENSITY),
+                direction,
+            );
+            //try rotating
+            let off_dir_a = avels[a]-(avels[a].dot(direction)/direction.magnitude2()) as f32 * direction;
+            let off_dir_b = bvels[b]-(bvels[b].dot(direction)/direction.magnitude2()) as f32 * direction;
+            ashapes[a].rot(b_gain*off_dir_a.magnitude()*0.5);
+            bshapes[b].rot(a_gain*off_dir_b.magnitude()*0.5);
+            //hit object should gain speed along hit direction:
+            //hitting object should lose speed and change to cut direction.
+            avels[a] += a_gain;
+            bvels[b] += b_gain;
             ashapes[a].translate(-disp / 2.0);
-            avels[a] -= disp / 2.0;
             bshapes[b].translate(disp / 2.0);
-            bvels[b] += disp / 2.0;
+
+            //hp handling.
             if ahps[a] >= 1 {
                 ahps[a] -= 1;
             } else {
@@ -86,14 +103,6 @@ pub fn restitute_dyn_dyn<S1: Shape, S2: Shape>(
             }
         }
     }
-
-    /*
-    clean(ashapes,&mut a_to_remove);
-    clean(avels,&mut a_to_remove);
-    clean(ahps,&mut a_to_remove);
-    clean(bshapes,&mut b_to_remove);
-    clean(bvels,&mut b_to_remove);
-    clean(bhps,&mut b_to_remove);*/
 }
 
 pub fn restitute_dyns<S1: Shape>(
@@ -126,6 +135,12 @@ pub fn restitute_dyns<S1: Shape>(
                 ashapes[b].mass(SAMPLE_DENSITY),
                 direction,
             );
+            //try rotating
+            let off_dir_a = avels[a]-(avels[a].dot(direction)/direction.magnitude2()) as f32 * direction;
+            let off_dir_b = avels[b]-(avels[b].dot(direction)/direction.magnitude2()) as f32 * direction;
+            ashapes[a].rot(b_gain*off_dir_a.magnitude()*0.5);
+            ashapes[b].rot(a_gain*off_dir_b.magnitude()*0.5);
+
             //hit object should gain speed along hit direction:
             //hitting object should lose speed and change to cut direction.
             avels[a] += a_gain;
@@ -201,16 +216,11 @@ fn direction(pos_from: Vec3, pos_to: Vec3) -> Vector3<f32> {
 // distribute velocity of objects with impulse
 fn vel_distribute(v_1: Vec3, v_2: Vec3, m_1: f32, m_2: f32, direction: Vec3) -> (Vec3, Vec3) {
     let momentum_a = v_1 * m_1;
-    let ma_dir_norm = (momentum_a.dot(direction) as f32).abs() / norm(direction);
+    let ma_dir_norm = (momentum_a.dot(direction) as f32).abs() / direction.magnitude() as f32;
     let momentum_b = v_2 * m_2;
-    let mb_dir_norm = (momentum_b.dot(direction) as f32).abs() / norm(direction);
+    let mb_dir_norm = (momentum_b.dot(direction) as f32).abs() / direction.magnitude() as f32;
     let sum_impulse = (ma_dir_norm + mb_dir_norm) * direction;
     let a_gain = sum_impulse * -1.0 * (m_2 / (m_1 + m_2)) / m_1;
     let b_gain = sum_impulse * (m_1 / (m_1 + m_2)) / m_2;
     (a_gain, b_gain)
-}
-
-// return norm of a Vec3
-pub fn norm(v_1: Vec3) -> f32 {
-    (v_1.dot(v_1) as f32).sqrt()
 }

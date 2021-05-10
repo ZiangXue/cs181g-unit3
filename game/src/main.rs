@@ -1,5 +1,5 @@
 use cgmath::Point3;
-use engine3d::{DT, Engine, collision::{self, norm}, events::*, geom::*, render::InstanceGroups, run};
+use engine3d::{DT, Engine, collision::{self}, events::*, geom::*, render::InstanceGroups, run};
 use rand::{self, Rng};
 use std::{f32::consts::PI, usize};
 use winit;
@@ -564,7 +564,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
 
         let mut rng = rand::thread_rng();
         let mut terrain_boxes =Terrain_Boxes_Stat { body:vec![], velocity:vec![], hp:vec![]};
-        for i in 0..50{
+        for i in 0..1{
             let scale = 0.3 as f32;
             let pos_1 = Pos3{x:-2.0, y:scale, z:(i as f32)*scale*2.0};
             let pos_2 = Pos3{x:2.0, y:scale, z:(i as f32)*scale*2.0};
@@ -667,7 +667,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
                 rot: Quat::new(1.0, 0.0, 0.0, 0.0),
             });
             self.marbles.velocity.push(forward.normalize_to(15.0));
-            self.marbles.hp.push(5);
+            self.marbles.hp.push(2);
             self.marbles.acc.push(Vec3 {
                 x: 0.0,
                 y: -9.8,
