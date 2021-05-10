@@ -5,7 +5,7 @@ use crate::model::*;
 use crate::texture;
 use crate::Game;
 use crate::anim::Bone;
-use cgmath::SquareMatrix;
+use cgmath::{Matrix, Matrix4, SquareMatrix};
 use std::collections::BTreeMap;
 use wgpu::util::DeviceExt;
 
@@ -84,12 +84,31 @@ impl Render {
                         ty: wgpu::BindingType::Texture {
                             multisampled: false,
                             view_dimension: wgpu::TextureViewDimension::D2,
-                            sample_type: wgpu::TextureSampleType::Float { filterable: false },
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
                         },
                         count: None,
                     },
                     wgpu::BindGroupLayoutEntry {
                         binding: 1,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 2,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler {
+                            comparison: false,
+                            filtering: true,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 3,
                         visibility: wgpu::ShaderStage::FRAGMENT,
                         ty: wgpu::BindingType::Sampler {
                             comparison: false,
@@ -619,45 +638,37 @@ impl InstanceGroups {
 pub struct InstanceRaw {
     #[allow(dead_code)]
     pub model: [[f32; 4]; 4],
+    pub normal: [[f32; 4]; 4],
 }
 
 impl InstanceRaw {
+    pub fn new(model: Matrix4<f32>) -> Self {
+        Self {
+            model: model.into(),
+            normal: model.invert().unwrap().transpose().into()
+        }
+    }
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         use std::mem;
-        wgpu::VertexBufferLayout {
+        const INSTANCEDESC: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
             array_stride: mem::size_of::<InstanceRaw>() as wgpu::BufferAddress,
             // We need to switch from using a step mode of Vertex to Instance
             // This means that our shaders will only change to use the next
             // instance when the shader starts processing a new instance
             step_mode: wgpu::InputStepMode::Instance,
-            //attributes: &wgpu::vertex_attr_array![5 => Float4, 6 => Float4, 4 => Float2, 5 => Float2],
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    // While our vertex shader only uses locations 0, and 1 now, in later tutorials we'll
-                    // be using 2, 3, and 4, for Vertex. We'll start at slot 5 not conflict with them later
-                    shader_location: 5,
-                    format: wgpu::VertexFormat::Float4,
-                },
-                // A mat4 takes up 4 vertex slots as it is technically 4 vec4s. We need to define a slot
-                // for each vec4. We don't have to do this in code though.
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 4]>() as wgpu::BufferAddress,
-                    shader_location: 6,
-                    format: wgpu::VertexFormat::Float4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 7,
-                    format: wgpu::VertexFormat::Float4,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 12]>() as wgpu::BufferAddress,
-                    shader_location: 8,
-                    format: wgpu::VertexFormat::Float4,
-                },
+            // Four vecs to represent mat
+            attributes:  &wgpu::vertex_attr_array![
+                7 => Float4,
+                8 => Float4,
+                9 => Float4,
+                10 => Float4,
+                11 => Float4,
+                12 => Float4,
+                13 => Float4,
+                14 => Float4,
             ],
-        }
+        };
+        INSTANCEDESC
     }
 }
 

@@ -24,12 +24,12 @@ impl Player {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render(
             rules.player_model,
-            engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(self.body.c.to_vec() - Vec3::new(0.0, 0.2, 0.0))
+            engine3d::render::InstanceRaw::new(
+                Mat4::from_translation(self.body.c.to_vec() - Vec3::new(0.0, 0.2, 0.0))
                     * Mat4::from_scale(self.body.r)
-                    * Mat4::from(self.rot))
-                .into(),
-            },
+                    * Mat4::from(self.rot)
+            )
+            ,
         );
     }
     fn integrate(&mut self) {
@@ -212,9 +212,9 @@ impl Marbles {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render_batch(
             rules.marble_model,
-            self.body.iter().map(|body| engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(body.c.to_vec()) * Mat4::from_scale(body.r)).into(),
-            }),
+            self.body.iter().map(|body| engine3d::render::InstanceRaw::new(
+                Mat4::from_translation(body.c.to_vec()) * Mat4::from_scale(body.r)
+            )),
         );
     }
     fn integrate(&mut self) {
@@ -254,15 +254,14 @@ pub struct Wall {
 impl Wall {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render(
-            rules.wall_model,
-            engine3d::render::InstanceRaw {
-                model: (Mat4::from(cgmath::Quaternion::between_vectors(
-                    Vec3::new(0.0, 1.0, 0.0),
-                    self.body.n,
+        rules.wall_model,
+        engine3d::render::InstanceRaw::new(
+            Mat4::from(cgmath::Quaternion::between_vectors(
+                Vec3::new(0.0, 1.0, 0.0),
+                self.body.n,
                 )) * Mat4::from_translation(Vec3::new(0.0, -0.025, 0.0))
-                    * Mat4::from_nonuniform_scale(0.5, 0.05, 0.5))
-                .into(),
-            },
+                    * Mat4::from_nonuniform_scale(0.5, 0.05, 0.5)
+            )
         );
     }
 
@@ -379,11 +378,10 @@ impl Terrain_Boxes {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render_batch(
             rules.terrain_box_model,
-            self.body.iter().map(|body| engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(body.c.to_vec())
-                    * Mat4::from_scale(body.half_sizes.x))
-                .into(),
-            }),
+            self.body.iter().map(|body| engine3d::render::InstanceRaw::new(
+                Mat4::from_translation(body.c.to_vec())
+                    * Mat4::from_scale(body.half_sizes.x)
+            )),
         );
     }
     fn integrate(&mut self) {
@@ -521,7 +519,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
         let terrain_box_model = engine.load_model("box.obj");
         engine.set_lights(vec![Light::point(
             Pos3::new(0.0, 10.0, 0.0),
-            Vec3::new(0.5, 0.5, 0.5),
+            Vec3::new(1.0, 1.0, 1.0),
         )]);
         engine.set_ambient(0.1);
         (

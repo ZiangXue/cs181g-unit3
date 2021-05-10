@@ -15,6 +15,8 @@ pub struct ModelVertex {
     position: [f32; 3],
     tex_coords: [f32; 2],
     normal: [f32; 3],
+    tangent: [f32; 4],
+    bitangent: [f32; 4],
     bone_ids: u32, // 32 bits, fits into last slot of previous line
     // Not relevant for static geometry, wasteful!
     // But, this means we just need one layout...
@@ -24,45 +26,27 @@ pub struct ModelVertex {
 impl Vertex for ModelVertex {
     fn desc<'a>() -> wgpu::VertexBufferLayout<'a> {
         use std::mem;
-        wgpu::VertexBufferLayout {
+        const VERTEXLAYOUT: wgpu::VertexBufferLayout<'static> = wgpu::VertexBufferLayout {
             array_stride: mem::size_of::<ModelVertex>() as wgpu::BufferAddress,
             step_mode: wgpu::InputStepMode::Vertex,
-            attributes: &[
-                wgpu::VertexAttribute {
-                    offset: 0,
-                    shader_location: 0,
-                    format: wgpu::VertexFormat::Float3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
-                    shader_location: 1,
-                    format: wgpu::VertexFormat::Float2,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 5]>() as wgpu::BufferAddress,
-                    shader_location: 2,
-                    format: wgpu::VertexFormat::Float3,
-                },
-                wgpu::VertexAttribute {
-                    offset: mem::size_of::<[f32; 8]>() as wgpu::BufferAddress,
-                    shader_location: 3,
-                    format: wgpu::VertexFormat::Uint,
-                },
-                wgpu::VertexAttribute {
-                    offset: (mem::size_of::<[f32; 8]>() + mem::size_of::<u32>())
-                        as wgpu::BufferAddress,
-                    shader_location: 4,
-                    format: wgpu::VertexFormat::Float4,
-                },
+            attributes: &wgpu::vertex_attr_array![
+                0 => Float3,
+                1 => Float2,
+                2 => Float3,
+                3 => Float4,
+                4 => Float4,
+                5 => Uint,
+                6 => Float4
             ],
-        }
+        };
+        VERTEXLAYOUT
     }
 }
 
 pub struct Material {
     pub name: String,
     pub diffuse_texture: texture::Texture,
-    // pub normal_texture: texture::Texture,
+    pub normal_texture: texture::Texture,
     pub bind_group: wgpu::BindGroup,
 }
 
@@ -126,7 +110,10 @@ impl Model {
         for mat in obj_materials {
             let diffuse_path = mat.diffuse_texture;
             let diffuse_texture =
-                texture::Texture::load(device, queue, containing_folder.join(diffuse_path))?;
+                texture::Texture::load(device, queue, containing_folder.join(diffuse_path), false)?;
+            let normal_path = mat.normal_texture;
+            let normal_texture =
+                texture::Texture::load(device, queue, containing_folder.join(normal_path), true)?;
 
             let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
                 layout,
@@ -137,7 +124,15 @@ impl Model {
                     },
                     wgpu::BindGroupEntry {
                         binding: 1,
+                        resource: wgpu::BindingResource::TextureView(&diffuse_texture.view),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 2,
                         resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                    },
+                    wgpu::BindGroupEntry {
+                        binding: 3,
+                        resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
                     },
                 ],
                 label: None,
@@ -146,6 +141,7 @@ impl Model {
             materials.push(Material {
                 name: mat.name,
                 diffuse_texture,
+                normal_texture,
                 bind_group,
             });
         }
@@ -166,9 +162,60 @@ impl Model {
                         m.mesh.normals[i * 3 + 1],
                         m.mesh.normals[i * 3 + 2],
                     ],
+                    // ...
+                    // We'll calculate these later
+                    tangent: [0.0; 4],
+                    bitangent: [0.0; 4],
                     bone_ids: 0,
                     bone_weights: [1.0, 0.0, 0.0, 0.0],
                 });
+            }
+
+            let indices = &m.mesh.indices;
+
+            // Calculate tangents and bitangets. We're going to
+            // use the triangles, so we need to loop through the
+            // indices in chunks of 3
+            for c in indices.chunks(3) {
+                let v0 = vertices[c[0] as usize];
+                let v1 = vertices[c[1] as usize];
+                let v2 = vertices[c[2] as usize];
+
+                let pos0: Vec3 = v0.position.into();
+                let pos1: Vec3 = v1.position.into();
+                let pos2: Vec3 = v2.position.into();
+
+                let uv0: cgmath::Vector2<_> = v0.tex_coords.into();
+                let uv1: cgmath::Vector2<_> = v1.tex_coords.into();
+                let uv2: cgmath::Vector2<_> = v2.tex_coords.into();
+
+                // Calculate the edges of the triangle
+                let delta_pos1 = pos1 - pos0;
+                let delta_pos2 = pos2 - pos0;
+
+                // This will give us a direction to calculate the
+                // tangent and bitangent
+                let delta_uv1 = uv1 - uv0;
+                let delta_uv2 = uv2 - uv0;
+
+                // Solving the following system of equations will
+                // give us the tangent and bitangent.
+                //     delta_pos1 = delta_uv1.x * T + delta_u.y * B
+                //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
+                // Luckily, the place I found this equation provided 
+                // the solution!
+                let r = 1.0 / (delta_uv1 .x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+                let tangent: Vec4 = ((delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r).extend(1.0);
+                let bitangent = ((delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r).extend(1.0);
+                
+                // We'll use the same tangent/bitangent for each vertex in the triangle
+                vertices[c[0] as usize].tangent = tangent.into();
+                vertices[c[1] as usize].tangent = tangent.into();
+                vertices[c[2] as usize].tangent = tangent.into();
+
+                vertices[c[0] as usize].bitangent = bitangent.into();
+                vertices[c[1] as usize].bitangent = bitangent.into();
+                vertices[c[2] as usize].bitangent = bitangent.into();
             }
 
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -223,13 +270,24 @@ impl Model {
                     .base_color_texture()
                     .unwrap()
                     .texture();
+                let normal = mat
+                    .normal_texture()
+                    .unwrap()
+                    .texture();
                 let gltf::image::Data {
                     pixels,
                     format,
                     width,
                     height,
                 } = images[diffuse.source().index()].clone();
-                let sam = diffuse.sampler();
+                let gltf::image::Data {
+                    pixels: normal_pixels,
+                    format: normal_format,
+                    width: normal_width,
+                    height: normal_height,
+                } = images[normal.source().index()].clone();
+                let dif_sam = diffuse.sampler();
+                let norm_sam = normal.sampler();
                 use gltf::image::Format;
                 use image::DynamicImage as DI;
                 let diffuse_texture = texture::Texture::from_image(
@@ -261,11 +319,49 @@ impl Model {
                         _ => panic!("This is just ridiculous"),
                     },
                     diffuse.name(),
-                    convert_wrap(sam.wrap_s()),
-                    convert_wrap(sam.wrap_t()),
+                    convert_wrap(dif_sam.wrap_s()),
+                    convert_wrap(dif_sam.wrap_t()),
                     wgpu::AddressMode::default(),
-                    convert_min_filter(sam.min_filter()),
-                    convert_mag_filter(sam.mag_filter()),
+                    convert_min_filter(dif_sam.min_filter()),
+                    convert_mag_filter(dif_sam.mag_filter()),
+                    false
+                )
+                .unwrap();
+                let normal_texture = texture::Texture::from_image(
+                    device,
+                    queue,
+                    &match normal_format {
+                        Format::R8 => DI::ImageLuma8(
+                            image::ImageBuffer::from_raw(normal_width, normal_height, normal_pixels).unwrap(),
+                        ),
+                        Format::R8G8 => DI::ImageLumaA8(
+                            image::ImageBuffer::from_raw(normal_width,normal_height,normal_pixels).unwrap(),
+                        ),
+                        Format::R8G8B8 => DI::ImageRgb8(
+                            image::ImageBuffer::from_raw(normal_width,normal_height,normal_pixels).unwrap(),
+                        ),
+                        Format::R8G8B8A8 => DI::ImageRgba8(
+                            image::ImageBuffer::from_raw(normal_width,normal_height,normal_pixels).unwrap(),
+                        ),
+                        Format::B8G8R8 => DI::ImageBgr8(
+                            image::ImageBuffer::from_raw(normal_width,normal_height,normal_pixels).unwrap(),
+                        ),
+                        Format::B8G8R8A8 => DI::ImageBgra8(
+                            image::ImageBuffer::from_raw(normal_width,normal_height,normal_pixels).unwrap(),
+                        ),
+                        // Format::R16 => DI::ImageLuma16(image::ImageBuffer::from_raw(diffuse_image.width, diffuse_image.height, diffuse_image.pixels).unwrap()),
+                        // Format::R16G16 => DI::ImageLumaA16(image::ImageBuffer::from_raw(diffuse_image.width, diffuse_image.height, diffuse_image.pixels).unwrap()),
+                        // Format::R16G16B16 => DI::ImageRgb16(image::ImageBuffer::from_raw(diffuse_image.width, diffuse_image.height, diffuse_image.pixels).unwrap()),
+                        // Format::R16G16B16A16 => DI::ImageRgba16(image::ImageBuffer::from_raw(diffuse_image.width, diffuse_image.height, diffuse_image.pixels).unwrap())
+                        _ => panic!("This is just ridiculous"),
+                    },
+                    normal.name(),
+                    convert_wrap(norm_sam.wrap_s()),
+                    convert_wrap(norm_sam.wrap_t()),
+                    wgpu::AddressMode::default(),
+                    convert_min_filter(norm_sam.min_filter()),
+                    convert_mag_filter(norm_sam.mag_filter()),
+                    true
                 )
                 .unwrap();
                 let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -277,7 +373,15 @@ impl Model {
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&normal_texture.view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
                             resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
                         },
                     ],
                     label: None,
@@ -285,6 +389,7 @@ impl Model {
                 Material {
                     name: mat.name().unwrap_or("").to_string(),
                     diffuse_texture,
+                    normal_texture,
                     bind_group,
                 }
             })
@@ -307,6 +412,24 @@ impl Model {
                     wgpu::AddressMode::default(),
                     wgpu::FilterMode::Nearest,
                     wgpu::FilterMode::Nearest,
+                    false
+                )
+                .unwrap();
+                let normal_texture = texture::Texture::from_image(
+                    device,
+                    queue,
+                    &DI::ImageRgb8(image::ImageBuffer::from_pixel(
+                        16,
+                        16,
+                        image::Rgb([0, 0, 0]),
+                    )),
+                    Some("Default Material"),
+                    wgpu::AddressMode::Repeat,
+                    wgpu::AddressMode::Repeat,
+                    wgpu::AddressMode::default(),
+                    wgpu::FilterMode::Nearest,
+                    wgpu::FilterMode::Nearest,
+                    true
                 )
                 .unwrap();
                 let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -318,7 +441,15 @@ impl Model {
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&normal_texture.view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
                             resource: wgpu::BindingResource::Sampler(&diffuse_texture.sampler),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 3,
+                            resource: wgpu::BindingResource::Sampler(&normal_texture.sampler),
                         },
                     ],
                     label: None,
@@ -326,6 +457,7 @@ impl Model {
                 Material {
                     name: "Default Material".to_string(),
                     diffuse_texture,
+                    normal_texture,
                     bind_group,
                 }
             })
@@ -392,16 +524,79 @@ impl Model {
                     })
                     .collect(),
             };
+            let tangents = reader
+                .read_tangents();
+            let (tangents, bitangents) = match tangents {
+                Some(tangents) => {
+                    let tangents: Vec<[f32; 4]> = tangents.collect();
+                    let bitangents = normal.iter().zip(tangents.iter())
+                        .map(|(n, t)| {
+                        let curr_normal: Vec3 = (*n).into();
+                        let curr_tangent: Vec4 = (*t).into();
+                        (curr_normal.cross(curr_tangent.xyz()) * curr_tangent.w).extend(0.0)
+                    }).collect::<Vec<Vec4>>();
+                    (tangents, bitangents)
+                },
+                None => {
+                    // Calculate tangents and bitangets. We're going to
+                    // use the triangles, so we need to loop through the
+                    // indices in chunks of 3
+                    let mut tangents = Vec::with_capacity(positions.len());
+                    let mut bitangents = Vec::with_capacity(positions.len());
+                    for c in indices.chunks(3) {
+                        let pos0: Vec3 = positions[c[0] as usize].into();
+                        let pos1: Vec3 = positions[c[1] as usize].into();
+                        let pos2: Vec3 = positions[c[2] as usize].into();
+
+                        let uv0: cgmath::Vector2<_> = tex_coords[c[0] as usize].into();
+                        let uv1: cgmath::Vector2<_> = tex_coords[c[1] as usize].into();
+                        let uv2: cgmath::Vector2<_> = tex_coords[c[2] as usize].into();
+
+                        // Calculate the edges of the triangle
+                        let delta_pos1 = pos1 - pos0;
+                        let delta_pos2 = pos2 - pos0;
+
+                        // This will give us a direction to calculate the
+                        // tangent and bitangent
+                        let delta_uv1 = uv1 - uv0;
+                        let delta_uv2 = uv2 - uv0;
+
+                        // Solving the following system of equations will
+                        // give us the tangent and bitangent.
+                        //     delta_pos1 = delta_uv1.x * T + delta_u.y * B
+                        //     delta_pos2 = delta_uv2.x * T + delta_uv2.y * B
+                        // Luckily, the place I found this equation provided 
+                        // the solution!
+                        let r = 1.0 / (delta_uv1 .x * delta_uv2.y - delta_uv1.y * delta_uv2.x);
+                        let tangent: Vec4 = ((delta_pos1 * delta_uv2.y - delta_pos2 * delta_uv1.y) * r).extend(1.0);
+                        let bitangent = ((delta_pos2 * delta_uv1.x - delta_pos1 * delta_uv2.x) * r).extend(1.0);
+                        
+                        // We'll use the same tangent/bitangent for each vertex in the triangle
+                        tangents[c[0] as usize] = tangent.into();
+                        tangents[c[1] as usize] = tangent.into();
+                        tangents[c[2] as usize] = tangent.into();
+
+                        bitangents[c[0] as usize] = bitangent.into();
+                        bitangents[c[1] as usize] = bitangent.into();
+                        bitangents[c[2] as usize] = bitangent.into();
+                    }
+                    (tangents, bitangents)
+                }
+            };
             let vertices: Vec<_> = positions
                 .into_iter()
                 .zip(tex_coords.into_iter())
                 .zip(normal.into_iter())
                 .zip(joints.into_iter())
                 .zip(bone_weights.into_iter())
-                .map(|((((p, tc), n), bi), bw)| ModelVertex {
+                .zip(tangents.into_iter())
+                .zip(bitangents.into_iter())
+                .map(|((((((p, tc), n), bi), bw),t),bt)| ModelVertex {
                     position: p,
                     tex_coords: tc,
                     normal: n,
+                    tangent: t,
+                    bitangent: bt.into(),
                     bone_ids: {
                         ((bi[0] as u32) << 24)
                             | ((bi[1] as u32) << 16)
@@ -411,7 +606,6 @@ impl Model {
                     bone_weights: bw,
                 })
                 .collect();
-
             let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some(&format!("{:?} Vertex Buffer", mesh.name().unwrap_or(""))),
                 contents: bytemuck::cast_slice(&vertices),
@@ -422,7 +616,6 @@ impl Model {
                 contents: bytemuck::cast_slice(&indices),
                 usage: wgpu::BufferUsage::INDEX,
             });
-
             // make buffers
             meshes.push(Mesh {
                 name: mesh.name().unwrap_or("").to_string(),

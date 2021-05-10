@@ -6,6 +6,7 @@ pub struct Texture {
     pub texture: wgpu::Texture,
     pub view: wgpu::TextureView,
     pub sampler: wgpu::Sampler,
+    is_normal_map: bool,
 }
 
 impl Texture {
@@ -14,6 +15,7 @@ impl Texture {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         path: P,
+        is_normal_map: bool,
     ) -> Result<Self> {
         // Needed to appease the borrow checker
         let path_copy = path.as_ref().to_path_buf();
@@ -30,6 +32,7 @@ impl Texture {
             wgpu::AddressMode::ClampToEdge,
             wgpu::FilterMode::Linear,
             wgpu::FilterMode::Linear,
+            is_normal_map
         )
     }
 
@@ -71,6 +74,7 @@ impl Texture {
             texture,
             view,
             sampler,
+            is_normal_map: false,
         }
     }
 
@@ -80,6 +84,7 @@ impl Texture {
         queue: &wgpu::Queue,
         bytes: &[u8],
         label: &str,
+        is_normal_map: bool,
     ) -> Result<Self> {
         let img = image::load_from_memory(bytes)?;
         Self::from_image(
@@ -92,6 +97,7 @@ impl Texture {
             wgpu::AddressMode::ClampToEdge,
             wgpu::FilterMode::Linear,
             wgpu::FilterMode::Linear,
+            is_normal_map,
         )
     }
 
@@ -105,6 +111,7 @@ impl Texture {
         addr_w: wgpu::AddressMode,
         min_filter: wgpu::FilterMode,
         mag_filter: wgpu::FilterMode,
+        is_normal_map: bool,
     ) -> Result<Self> {
         let dimensions = img.dimensions();
         let rgba = img.to_rgba8();
@@ -120,7 +127,11 @@ impl Texture {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            format: if is_normal_map {
+                wgpu::TextureFormat::Rgba8Unorm
+            } else {
+                wgpu::TextureFormat::Rgba8UnormSrgb
+            },
             usage: wgpu::TextureUsage::SAMPLED | wgpu::TextureUsage::COPY_DST,
         });
 
@@ -154,6 +165,7 @@ impl Texture {
             texture,
             view,
             sampler,
+            is_normal_map
         })
     }
 }
