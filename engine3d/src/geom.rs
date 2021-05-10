@@ -188,6 +188,7 @@ impl Collide<Sphere> for Box {
             //dist.normalize_to(dist_rot.magnitude());
             Some(dist)
         }*/
+        /* 
         let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x + s.r);
         let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y + s.r);
         let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z + s.r);
@@ -196,6 +197,19 @@ impl Collide<Sphere> for Box {
             None
         } else {
             Some(dist)
+        }
+        */
+        let offset = s.c - self.c;
+        let distance = offset.magnitude();
+        if distance < self.half_sizes.x + s.r {
+            // Make sure we don't divide by 0
+            let distance = if distance == 0.0 { 1.0 } else { distance };
+            // How much combined radius is "left over"?
+            let disp_mag = (self.half_sizes.x + s.r) - distance;
+            // Normalize offset and multiply by the amount to push
+            Some(offset * (disp_mag / distance))
+        } else {
+            None
         }
     }
 }
