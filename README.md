@@ -9,3 +9,5 @@ One way to do this is to keep track of to-be-deleted indices and pop with descen
 
 todo: enable collision detection & handling for boxes.
 todo: implement deletion of items Game.
+
+Todo: give each object a rot quaternion.

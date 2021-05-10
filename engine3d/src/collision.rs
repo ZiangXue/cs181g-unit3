@@ -50,8 +50,7 @@ pub fn restitute_dyn_dyn<S1: Shape, S2: Shape>(
     contacts: &mut Vec<Contact<usize>>,
     a_to_remove: &mut Vec<usize>,
     b_to_remove: &mut Vec<usize>,
-)
-where
+) where
     S1: Collide<S2>,
 {
     contacts.sort_unstable_by(|a, b| b.mtv.magnitude2().partial_cmp(&a.mtv.magnitude2()).unwrap());
@@ -103,8 +102,7 @@ pub fn restitute_dyns<S1: Shape>(
     ahps: &mut Vec<usize>,
     contacts: &mut [Contact<usize>],
     a_to_remove: &mut Vec<usize>,
-)
-where
+) where
     S1: Collide<S1>,
 {
     contacts.sort_unstable_by(|a, b| b.mtv.magnitude2().partial_cmp(&a.mtv.magnitude2()).unwrap());
@@ -134,7 +132,7 @@ where
             avels[b] += b_gain;
             ashapes[a].translate(-disp / 2.0);
             ashapes[b].translate(disp / 2.0);
-            
+
             if ahps[a] >= 1 {
                 ahps[a] -= 1;
             } else {

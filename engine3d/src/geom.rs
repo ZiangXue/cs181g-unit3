@@ -18,6 +18,8 @@ pub trait Shape {
 pub struct Sphere {
     pub c: Pos3,
     pub r: f32,
+    pub rot: Quat,
+    pub omega: Vec3,
 }
 
 impl Shape for Sphere {
@@ -58,6 +60,8 @@ pub struct Box {
     pub c: Pos3,
     pub axes: Mat3,
     pub half_sizes: Vec3,
+    pub rot:Quat,
+    pub omega:Vec3,
 }
 
 impl Shape for Box {
@@ -163,17 +167,19 @@ impl Collide<Plane> for Sphere {
     }
 }
 
-impl Collide<Box> for Sphere{
-    fn touching(&self, b:&Box) -> bool{
+impl Collide<Box> for Sphere {
+    fn touching(&self, b: &Box) -> bool {
         //assume AA:
-        ((b.c.x - self.c.x).abs() < b.half_sizes.x +self.r) || ((b.c.y - self.c.y).abs() < b.half_sizes.y +self.r) || ((b.c.z - self.c.z).abs() < b.half_sizes.z +self.r)
+        ((b.c.x - self.c.x).abs() < b.half_sizes.x + self.r)
+            || ((b.c.y - self.c.y).abs() < b.half_sizes.y + self.r)
+            || ((b.c.z - self.c.z).abs() < b.half_sizes.z + self.r)
     }
 
     fn disp(&self, s: &Box) -> Option<Vec3> {
-        let x = (self.c.x - s.c.x) - (s.half_sizes.x +self.r);
-        let y = (self.c.y - s.c.y) - (s.half_sizes.y +self.r);
-        let z = (self.c.z - s.c.z) - (s.half_sizes.z +self.r);
-        let dist = Vec3{ x, y, z};
+        let x = (self.c.x - s.c.x) - (s.half_sizes.x + self.r);
+        let y = (self.c.y - s.c.y) - (s.half_sizes.y + self.r);
+        let z = (self.c.z - s.c.z) - (s.half_sizes.z + self.r);
+        let dist = Vec3 { x, y, z };
         if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
             None
         } else {
@@ -182,17 +188,19 @@ impl Collide<Box> for Sphere{
     }
 }
 
-impl Collide<Sphere> for Box{
-    fn touching(&self, s:&Sphere) -> bool{
+impl Collide<Sphere> for Box {
+    fn touching(&self, s: &Sphere) -> bool {
         //assume AA:
-        ((self.c.x - s.c.x).abs() < self.half_sizes.x +s.r) || ((self.c.y - s.c.y).abs() < self.half_sizes.y +s.r) || ((self.c.z - s.c.z).abs() < self.half_sizes.z +s.r)
+        ((self.c.x - s.c.x).abs() < self.half_sizes.x + s.r)
+            || ((self.c.y - s.c.y).abs() < self.half_sizes.y + s.r)
+            || ((self.c.z - s.c.z).abs() < self.half_sizes.z + s.r)
     }
 
     fn disp(&self, s: &Sphere) -> Option<Vec3> {
-        let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x +s.r);
-        let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y +s.r);
-        let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z +s.r);
-        let dist = Vec3{ x, y, z};
+        let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x + s.r);
+        let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y + s.r);
+        let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z + s.r);
+        let dist = Vec3 { x, y, z };
         if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
             None
         } else {
@@ -204,7 +212,7 @@ impl Collide<Sphere> for Box{
 impl Collide<Plane> for Box {
     fn touching(&self, p: &Plane) -> bool {
         // Assume AA: find the distance from center to surface
-        self.c.y -self.half_sizes.y < p.d
+        self.c.y - self.half_sizes.y < p.d
     }
     fn disp(&self, p: &Plane) -> Option<Vec3> {
         let dist = self.c.y - self.half_sizes.y;

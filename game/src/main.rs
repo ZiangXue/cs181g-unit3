@@ -13,8 +13,6 @@ pub struct Player {
     pub body: Sphere,
     pub velocity: Vec3,
     pub acc: Vec3,
-    pub rot: Quat,
-    pub omega: Vec3,
     pub hp:usize,
 }
 
@@ -27,18 +25,18 @@ impl Player {
             engine3d::render::InstanceRaw {
                 model: (Mat4::from_translation(self.body.c.to_vec() - Vec3::new(0.0, 0.2, 0.0))
                     * Mat4::from_scale(self.body.r)
-                    * Mat4::from(self.rot))
+                    * Mat4::from(self.body.rot))
                 .into(),
             },
         );
     }
     fn integrate(&mut self) {
-        self.velocity += ((self.rot * self.acc) + Vec3::new(0.0, -GRAVITY, 0.0)) * DT;
+        self.velocity += ((self.body.rot * self.acc) + Vec3::new(0.0, -GRAVITY, 0.0)) * DT;
         if self.velocity.magnitude() > Self::MAX_SPEED {
             self.velocity = self.velocity.normalize_to(Self::MAX_SPEED);
         }
         self.body.c += self.velocity * DT;
-        self.rot += 0.5 * DT * Quat::new(0.0, self.omega.x, self.omega.y, self.omega.z) * self.rot;
+        self.body.rot += 0.5 * DT * Quat::new(0.0, self.body.omega.x, self.body.omega.y, self.body.omega.z) * self.body.rot;
     }
 }
 
@@ -71,7 +69,7 @@ impl Camera for FPCamera {
         self.pitch += dy / 100.0;
         self.pitch = self.pitch.clamp(-PI / 4.0, PI / 4.0);
         self.player_pos = player.body.c;
-        self.player_rot = player.rot;
+        self.player_rot = player.body.rot;
     }
     fn update_camera(&self, c: &mut engine3d::camera::Camera) {
         c.eye = self.player_pos + Vec3::new(0.0, 0.5, 0.0);
@@ -122,7 +120,7 @@ impl Camera for FixOrbitCamera {
             self.distance += 0.5;
         }*/
         self.player_pos = player.body.c;
-        self.player_rot = player.rot;
+        self.player_rot = player.body.rot;
         // TODO: when player moves, slightly move backwards from player. Effect maginitude defined here.
         let mut rng = rand::thread_rng();
         if (player.acc.z)>0.0 {
@@ -185,7 +183,7 @@ impl Camera for OrbitCamera {
             self.distance += 0.5;
         }
         self.player_pos = player.body.c;
-        self.player_rot = player.rot;
+        self.player_rot = player.body.rot;
         // TODO: when player moves, slightly move yaw towards zero
     }
     fn update_camera(&self, c: &mut engine3d::camera::Camera) {
@@ -218,29 +216,16 @@ impl Marbles {
         igs.render_batch(
             rules.marble_model,
             self.body.iter().map(|body| engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(body.c.to_vec()) * Mat4::from_scale(body.r)).into(),
+                model: (Mat4::from_translation(body.c.to_vec()) * Mat4::from_scale(body.r)*Mat4::from(body.rot)).into(),
             }),
         );
     }
     fn integrate(&mut self) {
-        // for (vel,acc) in self.velocity.iter_mut().zip(self.acc.iter_mut()){
-        //     //*vel += Vec3::new(0.0, -GRAVITY, 0.0) * DT;
-        //     //Implement projectory motion for player-controlled marble
-        //     *vel+=*acc * DT;
-        //     println!("acc is:{:?}",acc);
-        //     println!("vel is:{:?}",vel);
-        // }
-        // for (body, vel) in self.body.iter_mut().zip(self.velocity.iter()) {
-        //     body.c += vel * DT;
-        //     println!("body.c is:{:?}",body.c);
-        // }
         for ((body, vel),acc) in self.body.iter_mut().zip(self.velocity.iter_mut()).zip(self.acc.iter()) {
             // The latest implementation enforces a -GRAVITY y acceleration on all newly created marbles.
             *vel += acc * DT;
             body.c += *vel * DT;
-            //println!("acc is:{:?}",acc);
-            //println!("vel is:{:?}",vel);
-            //println!("body.c is:{:?}",body.c);
+            body.rot += 0.5 * DT * Quat::new(0.0, body.omega.x, body.omega.y, body.omega.z) * body.rot;
         }
     }
     
@@ -305,44 +290,6 @@ pub struct Terrain_Boxes {
 }
 
 impl Terrain_Boxes {
-    fn add_standard(&mut self, pos: Pos3) {
-        let x_axis = Vec3 {
-            x: 1.0,
-            y: 0.0,
-            z: 0.0,
-        };
-        let y_axis = Vec3 {
-            x: 0.0,
-            y: 1.0,
-            z: 0.0,
-        };
-        let z_axis = Vec3 {
-            x: 0.0,
-            y: 0.0,
-            z: 1.0,
-        };
-        let half_sizes = Vec3 {
-            x: 1.0,
-            y: 1.0,
-            z: 1.0,
-        };
-        self.body.push(Box {
-            c: pos,
-            axes: Mat3 {
-                x: x_axis,
-                y: y_axis,
-                z: z_axis,
-            },
-            half_sizes,
-        });
-        self.velocity.push(Vec3 {
-            x: 0.0,
-            y: 0.0,
-            z: 0.0,
-        });
-        self.hp.push(100);
-    }
-
     fn add_scaled_cube(&mut self, pos: Pos3, scale:f32) {
         let x_axis = Vec3 {
             x: 1.0,
@@ -372,6 +319,8 @@ impl Terrain_Boxes {
                 z: z_axis,
             } * scale,
             half_sizes,
+            omega: Vec3::zero(),
+            rot: Quat::new(1.0, 0.0, 0.0, 0.0),
         });
         self.velocity.push(Vec3 {
             x: 0.0,
@@ -439,6 +388,8 @@ impl Heart {
                 z: z_axis,
             },
             half_sizes,
+            omega: Vec3::zero(),
+            rot: Quat::new(1.0, 0.0, 0.0, 0.0),
         });
         self.velocity.push(Vec3 {
             x: 0.0,
@@ -510,11 +461,11 @@ impl<C: Camera> engine3d::Game for Game<C> {
             body: Sphere {
                 c: Pos3::new(0.0, 3.0, 0.0),
                 r: 0.3,
+                omega: Vec3::zero(),
+                rot: Quat::new(1.0, 0.0, 0.0, 0.0),
             },
             velocity: Vec3::zero(),
             acc: Vec3::zero(),
-            omega: Vec3::zero(),
-            rot: Quat::new(1.0, 0.0, 0.0, 0.0),
             hp:100
         };
         let camera = C::new();
@@ -529,6 +480,8 @@ impl<C: Camera> engine3d::Game for Game<C> {
                     Sphere {
                         c: Pos3::new(x, y, z),
                         r,
+                        omega: Vec3::zero(),
+                        rot: Quat::new(1.0, 0.0, 0.0, 0.0),
                     }
                 })
                 .collect::<Vec<_>>(),
@@ -620,17 +573,17 @@ impl<C: Camera> engine3d::Game for Game<C> {
 
         // player control over direction goes here
         if engine.events.key_held(KeyCode::Q) {
-            self.player.omega = Vec3::unit_y();
+            self.player.body.omega = Vec3::unit_y();
         } else if engine.events.key_held(KeyCode::E) {
-            self.player.omega = -Vec3::unit_y();
+            self.player.body.omega = -Vec3::unit_y();
         } else {
-            self.player.omega = Vec3::zero();
+            self.player.body.omega = Vec3::zero();
         }
 
         if engine.events.key_pressed(KeyCode::Space) {
             // A unit vector that points to uphead uphigh from facing.
             // shooting direction and velocity defined here.
-            let forward = (self.player.rot*Vec3{x:0.0,y:0.5,z:1.0}).normalize();
+            let forward = (self.player.body.rot*Vec3{x:0.0,y:0.5,z:1.0}).normalize();
             self.marbles.body.push(Sphere {
                 c: Pos3 {
                     x: self.player.body.c.x + forward.x * 0.3,
@@ -638,6 +591,8 @@ impl<C: Camera> engine3d::Game for Game<C> {
                     z: self.player.body.c.z + forward.z * 0.3,
                 },
                 r: 0.2,
+                omega: Vec3::zero(),
+                rot: Quat::new(1.0, 0.0, 0.0, 0.0),
             });
             self.marbles.velocity.push(forward.normalize_to(15.0));
             self.marbles.hp.push(5);
