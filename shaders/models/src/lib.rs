@@ -73,16 +73,16 @@ pub fn main_fs(
     #[spirv(descriptor_set = 0, binding = 0)] t_diffuse: &Image2d,
     #[spirv(descriptor_set = 0, binding = 1)] s_diffuse: &Sampler,
     #[spirv(uniform, descriptor_set = 1, binding = 0)] uniforms: &Uniforms,
-    #[spirv(storage_buffer, descriptor_set = 2, binding = 0)] lights: &mut [Light;10],
+    #[spirv(storage_buffer, descriptor_set = 2, binding = 0)] lights: &[Light],
     #[spirv(uniform, descriptor_set = 2, binding = 1)] ambient: &f32,
     output: &mut Vec4,
 ) { 
-    let normal = Vec3::from([0.0, 1.0, 0.0]);//v_normal.normalize();
+    let normal = v_normal.normalize();
     let object_color: Vec4 = t_diffuse.sample(*s_diffuse, v_tex_coords);
     let view_dir = (uniforms.u_view_position.xyz() - v_position).normalize();
 
     let mut result = (*ambient) * object_color.xyz();
-    for i in 0..1 {
+    for i in 0..10 {
         let light_ambient = *ambient;
         // Point-light specific; change if directional lights, spotlights are used
         // to branch on e.g. position.w == 0 (directional) or direction.w == 0 (point) or else spot
@@ -92,11 +92,10 @@ pub fn main_fs(
         let diffuse_strength = normal.dot(light_dir).max(0.0);
         let diffuse_color = light_color * diffuse_strength;
         let ambient_color = light_color * light_ambient;
-        /*let half_dir = (view_dir + light_dir).normalize();
+        let half_dir = (view_dir + light_dir).normalize();
         let specular_strength = normal.dot(half_dir).max(0.0);
-        let specular_color = specular_strength * light_color.xyz();
-        result += (ambient_color + diffuse_color + specular_color) * object_color.xyz();*/
-        result = ambient_color + diffuse_color;
+        let specular_color = specular_strength * light_color;
+        result += (ambient_color + diffuse_color + specular_color) * object_color.xyz();
     }
     if object_color.w < 0.1 {
         discard();

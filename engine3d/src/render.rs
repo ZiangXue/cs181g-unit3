@@ -4,6 +4,7 @@ use crate::camera::Camera;
 use crate::model::*;
 use crate::texture;
 use crate::Game;
+use crate::anim::Bone;
 use cgmath::SquareMatrix;
 use std::collections::BTreeMap;
 use wgpu::util::DeviceExt;
@@ -212,7 +213,7 @@ impl Render {
         });
 
         let bone_uniform_size =
-            (BONE_MAX * std::mem::size_of::<crate::anim::Bone>()) as wgpu::BufferAddress;
+            (BONE_MAX * std::mem::size_of::<Bone>()) as wgpu::BufferAddress;
         let bone_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("Bones buffer"),
             size: bone_uniform_size,

@@ -520,9 +520,10 @@ impl<C: Camera> engine3d::Game for Game<C> {
         let player_model = engine.load_model("capsule.obj");
         let terrain_box_model = engine.load_model("box.obj");
         engine.set_lights(vec![Light::point(
-            Pos3::new(0.0, -10.0, 0.0),
-            Vec3::new(1.0, 1.0, 1.0),
+            Pos3::new(0.0, 10.0, 0.0),
+            Vec3::new(0.5, 0.5, 0.5),
         )]);
+        engine.set_ambient(0.1);
         (
             Self {
                 // camera_controller,
