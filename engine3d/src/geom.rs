@@ -167,36 +167,27 @@ impl Collide<Plane> for Sphere {
     }
 }
 
-impl Collide<Box> for Sphere {
-    fn touching(&self, b: &Box) -> bool {
-        //assume AA:
-        ((b.c.x - self.c.x).abs() < b.half_sizes.x + self.r)
-            || ((b.c.y - self.c.y).abs() < b.half_sizes.y + self.r)
-            || ((b.c.z - self.c.z).abs() < b.half_sizes.z + self.r)
-    }
-
-    fn disp(&self, s: &Box) -> Option<Vec3> {
-        let x = (self.c.x - s.c.x) - (s.half_sizes.x + self.r);
-        let y = (self.c.y - s.c.y) - (s.half_sizes.y + self.r);
-        let z = (self.c.z - s.c.z) - (s.half_sizes.z + self.r);
-        let dist = Vec3 { x, y, z };
-        if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
-            None
-        } else {
-            Some(dist)
-        }
-    }
-}
-
 impl Collide<Sphere> for Box {
     fn touching(&self, s: &Sphere) -> bool {
-        //assume AA:
-        ((self.c.x - s.c.x).abs() < self.half_sizes.x + s.r)
-            || ((self.c.y - s.c.y).abs() < self.half_sizes.y + s.r)
-            || ((self.c.z - s.c.z).abs() < self.half_sizes.z + s.r)
+        // vector pointing from center to center:
+        let mut dist = self.c - s.c;
+        dist = self.rot*dist;
+        (dist.x.abs() < self.half_sizes.x + s.r)||(dist.y.abs() < self.half_sizes.y+s.r)||(dist.z.abs() < self.half_sizes.z + s.r)
     }
 
     fn disp(&self, s: &Sphere) -> Option<Vec3> {
+        /* 
+        let mut dist = self.c - s.c;
+        let mut dist_rot = self.rot * dist;
+        dist_rot.x -= self.half_sizes.x + s.r;
+        dist_rot.y -= self.half_sizes.y + s.r;
+        dist_rot.z -= self.half_sizes.z + s.r;
+        if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
+            None
+        } else {
+            //dist.normalize_to(dist_rot.magnitude());
+            Some(dist)
+        }*/
         let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x + s.r);
         let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y + s.r);
         let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z + s.r);

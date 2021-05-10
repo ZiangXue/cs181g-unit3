@@ -283,13 +283,13 @@ impl Wall {
 }
 
 #[derive(Clone, Debug)]
-pub struct Terrain_Boxes {
+pub struct Terrain_Boxes_Stat {
     pub body: Vec<Box>,
     pub velocity: Vec<Vec3>,
     pub hp: Vec<usize>,
 }
 
-impl Terrain_Boxes {
+impl Terrain_Boxes_Stat {
     fn add_scaled_cube(&mut self, pos: Pos3, scale:f32) {
         let x_axis = Vec3 {
             x: 1.0,
@@ -352,6 +352,78 @@ impl Terrain_Boxes {
         self.body.iter_mut().zip(self.velocity.iter_mut())
     }
 }
+
+#[derive(Clone, Debug)]
+pub struct Terrain_Boxes_Dyn {
+    pub body: Vec<Box>,
+    pub velocity: Vec<Vec3>,
+    pub hp: Vec<usize>,
+}
+
+impl Terrain_Boxes_Dyn {
+    fn add_scaled_cube(&mut self, pos: Pos3, scale:f32) {
+        let x_axis = Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        };
+        let y_axis = Vec3 {
+            x: 0.0,
+            y: 1.0,
+            z: 0.0,
+        };
+        let z_axis = Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        };
+        let half_sizes = Vec3 {
+            x: 1.0,
+            y: 1.0,
+            z: 1.0,
+        } * scale;
+        self.body.push(Box {
+            c: pos,
+            axes: Mat3 {
+                x: x_axis,
+                y: y_axis,
+                z: z_axis,
+            } * scale,
+            half_sizes,
+            omega: Vec3::zero(),
+            rot: Quat::new(1.0, 0.0, 0.0, 0.0),
+        });
+        self.velocity.push(Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 0.0,
+        });
+        self.hp.push(100);
+    }
+
+    fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
+        igs.render_batch(
+            rules.terrain_box_model,
+            self.body.iter().map(|body| engine3d::render::InstanceRaw {
+                model: (Mat4::from_translation(body.c.to_vec())
+                    * Mat4::from_scale(body.half_sizes.x))
+                .into(),
+            }),
+        );
+    }
+    fn integrate(&mut self) {
+        for vel in self.velocity.iter_mut() {
+            *vel += Vec3::new(0.0, -GRAVITY, 0.0) * DT;
+        }
+        for (body, vel) in self.body.iter_mut().zip(self.velocity.iter()) {
+            body.c += vel * DT;
+        }
+    }
+    fn _iter_mut(&mut self) -> impl Iterator<Item = (&mut Box, &mut Vec3)> {
+        self.body.iter_mut().zip(self.velocity.iter_mut())
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct Heart {
     pub body: Vec<Box>,
@@ -422,11 +494,11 @@ impl Heart {
     }
 
 }
-// Ziang: should we allow for
+
 struct Game<Cam: Camera> {
     marbles: Marbles,
     wall: Wall,
-    terrain_boxes: Terrain_Boxes,
+    terrain_boxes: Terrain_Boxes_Stat,
     player: Player,
     camera: Cam,
     heart: Heart,
@@ -491,7 +563,7 @@ impl<C: Camera> engine3d::Game for Game<C> {
         };
 
         let mut rng = rand::thread_rng();
-        let mut terrain_boxes =Terrain_Boxes { body:vec![], velocity:vec![], hp:vec![]};
+        let mut terrain_boxes =Terrain_Boxes_Stat { body:vec![], velocity:vec![], hp:vec![]};
         for i in 0..50{
             let scale = 0.3 as f32;
             let pos_1 = Pos3{x:-2.0, y:scale, z:(i as f32)*scale*2.0};
