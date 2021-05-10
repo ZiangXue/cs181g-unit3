@@ -1,7 +1,7 @@
 # 3ds Max Wavefront OBJ Exporter v0.97b - (c)2007 guruware
 # File Created: 05.12.2011 16:42:58
 
-mtllib 12190_Heart_v1_L3.mtl
+mtllib heart.mtl
 
 #
 # object Heart

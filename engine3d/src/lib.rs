@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{path::Path, process::exit};
 use winit::{
     event::*,
     event_loop::{ControlFlow, EventLoop},
@@ -25,6 +25,7 @@ pub trait Game: Sized {
     fn start(engine: &mut Engine) -> (Self, Self::StaticData);
     fn update(&mut self, rules: &Self::StaticData, engine: &mut Engine);
     fn render(&mut self, rules: &Self::StaticData, assets: &Assets, igs: &mut InstanceGroups);
+    fn is_over(&mut self)->(bool,bool);
 }
 
 pub struct Engine {
@@ -92,6 +93,13 @@ pub fn run<R, G: Game<StaticData = R>>(
     let mut since = Instant::now();
 
     event_loop.run_return(move |event, _, control_flow| {
+        if game.is_over().0 {
+            match game.is_over().1 {
+                true => {println!("You won!")}
+                false => {println!("You lost!")}
+            }
+            exit(0);
+        }
         *control_flow = ControlFlow::Poll;
         match event {
             Event::MainEventsCleared => window.request_redraw(),
@@ -144,6 +152,7 @@ pub fn run<R, G: Game<StaticData = R>>(
             available_time -= DT;
 
             game.update(&rules, &mut engine);
+            
 
             engine.events.next_frame();
             engine.frame += 1;

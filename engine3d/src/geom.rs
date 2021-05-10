@@ -12,7 +12,7 @@ pub trait Shape {
     fn translate(&mut self, v: Vec3);
     fn pos(&mut self) -> Vec3;
     fn mass(&mut self, density: f32) -> f32;
-    fn rot(&mut self, omega:Vec3);
+    fn rot(&mut self, omega: Vec3);
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -35,8 +35,8 @@ impl Shape for Sphere {
         self.r.powi(3) * PI * 4.0 / 3.0 * density
     }
 
-    fn rot(&mut self, omega:Vec3) {
-        self.omega = omega;
+    fn rot(&mut self, omega: Vec3) {
+        self.omega = omega.normalize();
     }
 }
 
@@ -59,8 +59,7 @@ impl Shape for Plane {
         0.0
     }
 
-    fn rot(&mut self, omega:Vec3) {
-    }
+    fn rot(&mut self, omega: Vec3) {}
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -68,8 +67,8 @@ pub struct Box {
     pub c: Pos3,
     pub axes: Mat3,
     pub half_sizes: Vec3,
-    pub rot:Quat,
-    pub omega:Vec3,
+    pub rot: Quat,
+    pub omega: Vec3,
 }
 
 impl Shape for Box {
@@ -85,8 +84,8 @@ impl Shape for Box {
         self.half_sizes.x * self.half_sizes.y * self.half_sizes.z * 8.0 * density
     }
 
-    fn rot(&mut self, omega:Vec3) {
-        self.omega = omega;
+    fn rot(&mut self, omega: Vec3) {
+        self.omega = omega.normalize();
     }
 }
 
@@ -109,8 +108,7 @@ impl Shape for AABB {
         self.half_sizes.x * self.half_sizes.y * self.half_sizes.z * 8.0 * density
     }
 
-    fn rot(&mut self, omega:Vec3) {
-    }
+    fn rot(&mut self, omega: Vec3) {}
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -132,8 +130,7 @@ impl Shape for Ray {
         0.0
     }
 
-    fn rot(&mut self, omega:Vec3) {
-    }
+    fn rot(&mut self, omega: Vec3) {}
 }
 
 pub trait Collide<S: Shape>: Shape {
@@ -189,12 +186,14 @@ impl Collide<Sphere> for Box {
     fn touching(&self, s: &Sphere) -> bool {
         // vector pointing from center to center:
         let mut dist = self.c - s.c;
-        dist = self.rot*dist;
-        (dist.x.abs() < self.half_sizes.x + s.r)||(dist.y.abs() < self.half_sizes.y+s.r)||(dist.z.abs() < self.half_sizes.z + s.r)
+        dist = self.rot * dist;
+        (dist.x.abs() < self.half_sizes.x + s.r)
+            || (dist.y.abs() < self.half_sizes.y + s.r)
+            || (dist.z.abs() < self.half_sizes.z + s.r)
     }
 
     fn disp(&self, s: &Sphere) -> Option<Vec3> {
-        /* 
+        /*
         let mut dist = self.c - s.c;
         let mut dist_rot = self.rot * dist;
         dist_rot.x -= self.half_sizes.x + s.r;
@@ -206,7 +205,7 @@ impl Collide<Sphere> for Box {
             //dist.normalize_to(dist_rot.magnitude());
             Some(dist)
         }*/
-        /* 
+        /*
         let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x + s.r);
         let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y + s.r);
         let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z + s.r);

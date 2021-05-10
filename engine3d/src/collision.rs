@@ -73,10 +73,12 @@ pub fn restitute_dyn_dyn<S1: Shape, S2: Shape>(
                 direction,
             );
             //try rotating
-            let off_dir_a = avels[a]-(avels[a].dot(direction)/direction.magnitude2()) as f32 * direction;
-            let off_dir_b = bvels[b]-(bvels[b].dot(direction)/direction.magnitude2()) as f32 * direction;
-            ashapes[a].rot(b_gain*off_dir_a.magnitude()*0.5);
-            bshapes[b].rot(a_gain*off_dir_b.magnitude()*0.5);
+            let off_dir_a =
+                avels[a] - (avels[a].dot(direction) / direction.magnitude2()) as f32 * direction;
+            let off_dir_b =
+                bvels[b] - (bvels[b].dot(direction) / direction.magnitude2()) as f32 * direction;
+            ashapes[a].rot(b_gain * off_dir_a.magnitude() * 0.5);
+            bshapes[b].rot(a_gain * off_dir_b.magnitude() * 0.5);
             //hit object should gain speed along hit direction:
             //hitting object should lose speed and change to cut direction.
             avels[a] += a_gain;
@@ -136,10 +138,12 @@ pub fn restitute_dyns<S1: Shape>(
                 direction,
             );
             //try rotating
-            let off_dir_a = avels[a]-(avels[a].dot(direction)/direction.magnitude2()) as f32 * direction;
-            let off_dir_b = avels[b]-(avels[b].dot(direction)/direction.magnitude2()) as f32 * direction;
-            ashapes[a].rot(b_gain*off_dir_a.magnitude()*0.5);
-            ashapes[b].rot(a_gain*off_dir_b.magnitude()*0.5);
+            let off_dir_a =
+                avels[a] - (avels[a].dot(direction) / direction.magnitude2()) as f32 * direction;
+            let off_dir_b =
+                avels[b] - (avels[b].dot(direction) / direction.magnitude2()) as f32 * direction;
+            ashapes[a].rot(b_gain * off_dir_a.magnitude() * 0.5);
+            ashapes[b].rot(a_gain * off_dir_b.magnitude() * 0.5);
 
             //hit object should gain speed along hit direction:
             //hitting object should lose speed and change to cut direction.
