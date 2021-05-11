@@ -1,14 +1,13 @@
-use crate::{anim::{self, DrawAnimated}, lights::Light};
+use crate::lights::Light;
 use crate::assets::{Assets, ModelRef};
 use crate::camera::Camera;
 use crate::model::*;
 use crate::texture;
 use crate::Game;
-use crate::anim::Bone;
 use cgmath::{Matrix, Matrix4, SquareMatrix};
 use std::collections::BTreeMap;
-use wgpu::util::DeviceExt;
-
+use wgpu::{Color, Texture, util::DeviceExt};
+use std::num::NonZeroU32;
 pub const BONE_MAX: usize = 128;
 pub const LIGHT_MAX: usize = 10;
 
@@ -21,19 +20,20 @@ pub(crate) struct Render {
     swap_chain: wgpu::SwapChain,
     pub(crate) size: winit::dpi::PhysicalSize<u32>,
     static_render_pipeline: wgpu::RenderPipeline,
-    animated_render_pipeline: wgpu::RenderPipeline,
     pub(crate) texture_layout: wgpu::BindGroupLayout,
     pub(crate) camera: Camera,
     uniforms: Uniforms,
     uniform_buffer: wgpu::Buffer,
     uniform_bind_group: wgpu::BindGroup,
-    bone_buffer: wgpu::Buffer,
-    bone_bind_group: wgpu::BindGroup,
     pub(crate) ambient: f32,
     light_ambient_buffer: wgpu::Buffer,
     lights: Vec<Light>,
     light_buffer: wgpu::Buffer,
     light_bind_group: wgpu::BindGroup,
+    shadows: Vec<texture::Texture>,
+    shadow_bind_group: wgpu::BindGroup,
+    shadow_depth_texture: texture::Texture,
+    shadow_render_pipeline: wgpu::RenderPipeline,
     depth_texture: texture::Texture,
     instance_groups: InstanceGroups,
 }
@@ -57,7 +57,7 @@ impl Render {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::empty(),
+                    features: wgpu::Features::SAMPLED_TEXTURE_BINDING_ARRAY,
                     limits: wgpu::Limits::default(),
                 },
                 None, // Trace path
@@ -216,6 +216,11 @@ impl Render {
                 | wgpu::BufferUsage::COPY_DST,
         });
 
+
+        let shadows: Vec<texture::Texture> = (0..10).map(|i| {
+            texture::Texture::create_shadow_texture(&device, &sc_desc, format!("shadow_texture {:?}", i).as_str())
+        }).collect();
+
         let light_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             layout: &light_bind_group_layout,
             entries: &[
@@ -231,50 +236,56 @@ impl Render {
             label: Some("light_bind_group"),
         });
 
-        let bone_uniform_size =
-            (BONE_MAX * std::mem::size_of::<Bone>()) as wgpu::BufferAddress;
-        let bone_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("Bones buffer"),
-            size: bone_uniform_size,
-            usage: wgpu::BufferUsage::UNIFORM
-                | wgpu::BufferUsage::COPY_SRC
-                | wgpu::BufferUsage::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let bone_bind_group_layout =
+        let shadow_bind_group_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStage::VERTEX | wgpu::ShaderStage::FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: wgpu::BufferSize::new(
-                            BONE_MAX as u64
-                                * std::mem::size_of::<anim::Bone>() as wgpu::BufferAddress,
-                        ),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStage::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            multisampled: false,
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        },
+                        count: NonZeroU32::new(LIGHT_MAX as u32),
                     },
-                    count: None,
-                }],
-                label: Some("bone_bind_group_layout"),
+                ],
+                label: Some("shadow_bind_group_layout"),
             });
 
-        let bone_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &bone_bind_group_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: bone_buffer.as_entire_binding(),
-            }],
-            label: Some("bone_bind_group"),
+        let shadow_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            layout: &shadow_bind_group_layout,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: wgpu::BindingResource::TextureViewArray(
+                        &[
+                            &shadows[0].view,
+                            &shadows[1].view,
+                            &shadows[2].view,
+                            &shadows[3].view,
+                            &shadows[4].view,
+                            &shadows[5].view,
+                            &shadows[6].view,
+                            &shadows[7].view,
+                            &shadows[8].view,
+                            &shadows[9].view,
+                        ]
+                    ),
+                },
+            ],
+            label: Some("shadow_bind_group"),
         });
 
         let static_module =
             device.create_shader_module(&wgpu::include_spirv!(env!("model_shader.spv")));
-        let bones_module =
-            device.create_shader_module(&wgpu::include_spirv!(env!("bone_shader.spv")));
+        let shadows_module =
+            device.create_shader_module(&wgpu::include_spirv!(env!("shadow_shader.spv")));
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &sc_desc, "depth_texture");
+        let shadow_depth_texture =
+            texture::Texture::create_shadow_depth_texture(&device, &sc_desc, "shadow_depth_texture");
         let static_render_pipeline = {
             let static_render_pipeline_layout =
                 device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
@@ -283,6 +294,7 @@ impl Render {
                         &texture_bind_group_layout,
                         &uniform_bind_group_layout,
                         &light_bind_group_layout,
+                        &shadow_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 });
@@ -329,38 +341,34 @@ impl Render {
                 },
             })
         };
-        let animated_render_pipeline = {
-            let animated_render_pipeline_layout =
+
+        let shadow_render_pipeline = {
+            let shadow_render_pipeline_layout =
                 device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-                    label: Some("Animated Render Pipeline Layout"),
+                    label: Some("Shadow Render Pipeline Layout"),
                     bind_group_layouts: &[
                         &texture_bind_group_layout,
                         &uniform_bind_group_layout,
                         &light_bind_group_layout,
-                        &bone_bind_group_layout,
                     ],
                     push_constant_ranges: &[],
                 });
 
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some("Animated Render Pipeline"),
-                layout: Some(&animated_render_pipeline_layout),
+                label: Some("Shadow Render Pipeline"),
+                layout: Some(&shadow_render_pipeline_layout),
                 vertex: wgpu::VertexState {
-                    module: &bones_module,
+                    module: &shadows_module,
                     entry_point: "main_vs",
                     buffers: &[ModelVertex::desc(), InstanceRaw::desc()],
                 },
                 fragment: Some(wgpu::FragmentState {
-                    module: &static_module,
+                    module: &shadows_module,
                     entry_point: "main_fs",
                     targets: &[wgpu::ColorTargetState {
-                        format: sc_desc.format,
+                        format: wgpu::TextureFormat::Depth32Float,
                         alpha_blend: wgpu::BlendState::REPLACE,
-                        color_blend: wgpu::BlendState {
-                            operation: wgpu::BlendOperation::Add,
-                            src_factor: wgpu::BlendFactor::SrcAlpha,
-                            dst_factor: wgpu::BlendFactor::OneMinusDstAlpha
-                        },
+                        color_blend: wgpu::BlendState::REPLACE,
                         write_mask: wgpu::ColorWrite::ALL,
                     }],
                 }),
@@ -388,7 +396,6 @@ impl Render {
                 },
             })
         };
-
         Self {
             surface,
             device,
@@ -397,7 +404,6 @@ impl Render {
             swap_chain,
             size,
             static_render_pipeline,
-            animated_render_pipeline,
             camera,
             uniform_buffer,
             uniform_bind_group,
@@ -407,8 +413,10 @@ impl Render {
             lights,
             light_buffer,
             light_bind_group,
-            bone_bind_group,
-            bone_buffer,
+            shadow_bind_group,
+            shadows,
+            shadow_depth_texture,
+            shadow_render_pipeline,
             texture_layout: texture_bind_group_layout,
             depth_texture,
             instance_groups: InstanceGroups::new(),
@@ -471,7 +479,39 @@ impl Render {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+        {
+            let shadow = &self.shadows[0];
+            let mut shadow_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: &shadow.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(Color::WHITE),
+                        store: true,
+                    },
+                }],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachmentDescriptor {
+                    attachment: &self.shadow_depth_texture.view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: true,
+                    }),
+                    stencil_ops: None,
+                }),
+            });
 
+            shadow_render_pass.set_pipeline(&self.shadow_render_pipeline);
+            for (mr, (irs, buf, _cap)) in self.instance_groups.static_groups.iter() {
+                shadow_render_pass.set_vertex_buffer(1, buf.as_ref().unwrap().slice(..));
+                shadow_render_pass.draw_model_instanced(
+                    assets.get_model(*mr).unwrap(),
+                    0..irs.len() as u32,
+                    &self.uniform_bind_group,
+                    &self.light_bind_group,
+                );
+            }
+        }
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
@@ -501,34 +541,13 @@ impl Render {
             render_pass.set_pipeline(&self.static_render_pipeline);
             for (mr, (irs, buf, _cap)) in self.instance_groups.static_groups.iter() {
                 render_pass.set_vertex_buffer(1, buf.as_ref().unwrap().slice(..));
+                render_pass.set_bind_group(3, &self.shadow_bind_group, &[]);
                 render_pass.draw_model_instanced(
                     assets.get_model(*mr).unwrap(),
                     0..irs.len() as u32,
                     &self.uniform_bind_group,
                     &self.light_bind_group,
                 );
-            }
-            render_pass.set_pipeline(&self.animated_render_pipeline);
-            for (mr, (irs, buf, _cap, bones)) in self.instance_groups.anim_groups.iter() {
-                let model = assets.get_model(*mr).unwrap();
-                for (i, (_ir, bones)) in irs.iter().zip(bones.chunks_exact(BONE_MAX)).enumerate() {
-                    let i = i as u64;
-                    render_pass.set_vertex_buffer(
-                        1,
-                        buf.as_ref()
-                            .unwrap()
-                            .slice(i..(i + InstanceRaw::desc().array_stride)),
-                    );
-                    self.queue
-                        .write_buffer(&self.bone_buffer, 0, bytemuck::cast_slice(&bones));
-                    // TODO set up bones for model here and bone bind group?
-                    render_pass.draw_model_skinned(
-                        model,
-                        &self.uniform_bind_group,
-                        &self.light_bind_group,
-                        &self.bone_bind_group,
-                    );
-                }
             }
         }
 
@@ -540,49 +559,21 @@ impl Render {
 
 pub struct InstanceGroups {
     static_groups: BTreeMap<ModelRef, (Vec<InstanceRaw>, Option<wgpu::Buffer>, usize)>,
-    anim_groups: BTreeMap<
-        ModelRef,
-        (
-            Vec<InstanceRaw>,
-            Option<wgpu::Buffer>,
-            usize,
-            Vec<anim::Bone>,
-        ),
-    >,
 }
 
 impl InstanceGroups {
     fn new() -> Self {
         Self {
             static_groups: BTreeMap::new(),
-            anim_groups: BTreeMap::new(),
         }
     }
     fn clear(&mut self) {
         for (_mr, (irs, _buf, _cap)) in self.static_groups.iter_mut() {
             irs.clear();
         }
-        for (_mr, (irs, _buf, _cap, bones)) in self.anim_groups.iter_mut() {
-            irs.clear();
-            bones.clear();
-        }
     }
     fn update_buffers(&mut self, queue: &wgpu::Queue, device: &wgpu::Device, _assets: &Assets) {
         for (_mr, (irs, buf, cap)) in self.static_groups.iter_mut() {
-            if buf.is_none() || *cap < irs.len() {
-                buf.replace(
-                    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                        label: None,
-                        usage: wgpu::BufferUsage::VERTEX | wgpu::BufferUsage::COPY_DST,
-                        contents: bytemuck::cast_slice(irs),
-                    }),
-                );
-                *cap = irs.len();
-            } else {
-                queue.write_buffer(buf.as_ref().unwrap(), 0, bytemuck::cast_slice(irs));
-            }
-        }
-        for (_mr, (irs, buf, cap, _bones)) in self.anim_groups.iter_mut() {
             if buf.is_none() || *cap < irs.len() {
                 buf.replace(
                     device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
@@ -607,29 +598,6 @@ impl InstanceGroups {
             .or_insert((vec![], None, 0))
             .0
             .extend(ir.into_iter())
-    }
-    pub fn render_anim(
-        &mut self,
-        mr: ModelRef,
-        ir: InstanceRaw,
-        bones: impl IntoIterator<Item = anim::Bone>,
-    ) {
-        self.render_anim_batch(mr, std::iter::once(ir), bones);
-    }
-    pub fn render_anim_batch(
-        &mut self,
-        mr: ModelRef,
-        ir: impl IntoIterator<Item = InstanceRaw>,
-        bone: impl IntoIterator<Item = anim::Bone>,
-    ) {
-        let ref mut groups = self.anim_groups;
-        let (irs, _buf, _cap, bones) = groups.entry(mr).or_insert((vec![], None, 0, vec![]));
-        irs.extend(ir.into_iter());
-        bones.extend(
-            bone.into_iter()
-                .chain(std::iter::repeat_with(anim::Bone::default))
-                .take(BONE_MAX),
-        );
     }
 }
 

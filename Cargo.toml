@@ -3,6 +3,7 @@ members = [
 	"engine3d",
 	"game",
 	"shaders/models",
+	"shaders/shadows",
 	"shaders/bones",
 ]
 
