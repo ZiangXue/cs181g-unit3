@@ -45,7 +45,7 @@ impl Render {
 
         // The instance is a handle to our GPU
         // BackendBit::PRIMARY => Vulkan + Metal + DX12 + Browser WebGPU
-        let instance = wgpu::Instance::new(wgpu::BackendBit::PRIMARY);
+        let instance = wgpu::Instance::new(wgpu::BackendBit::VULKAN);
         let surface = unsafe { instance.create_surface(window) };
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
