@@ -39,6 +39,17 @@ pub(crate) struct Render {
     instance_groups: InstanceGroups,
 }
 
+#[derive(Copy, Clone)]
+#[repr(C)]
+pub struct ShaderConstants {
+    pub width: u32,
+    pub height: u32,
+}
+
+unsafe fn any_as_u8_slice<T: Sized>(p: &T) -> &[u8] {
+    ::std::slice::from_raw_parts((p as *const T) as *const u8, ::std::mem::size_of::<T>())
+}
+
 impl Render {
     pub(crate) async fn new(window: &Window) -> Self {
         let size = window.inner_size();
@@ -58,8 +69,11 @@ impl Render {
             .request_device(
                 &wgpu::DeviceDescriptor {
                     label: None,
-                    features: wgpu::Features::SAMPLED_TEXTURE_BINDING_ARRAY,
-                    limits: wgpu::Limits::default(),
+                    features: wgpu::Features::SAMPLED_TEXTURE_BINDING_ARRAY | wgpu::Features::PUSH_CONSTANTS,
+                    limits: wgpu::Limits {
+                        max_push_constant_size: 256,
+                        ..Default::default()
+                    },
                 },
                 None, // Trace path
             )
@@ -405,7 +419,10 @@ impl Render {
                 device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                     label: Some("Sky Render Pipeline Layout"),
                     bind_group_layouts: &[],
-                    push_constant_ranges: &[],
+                    push_constant_ranges: &[wgpu::PushConstantRange {
+                        stages: wgpu::ShaderStage::all(),
+                        range: 0..std::mem::size_of::<ShaderConstants>() as u32,
+                    }],
                 });
 
             device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
@@ -571,8 +588,14 @@ impl Render {
                 }],
                 depth_stencil_attachment: None,
             });
-
+            let push_constants = ShaderConstants {
+                width: self.size.width,
+                height: self.size.height,
+            };
             render_pass.set_pipeline(&self.sky_render_pipeline);
+            render_pass.set_push_constants(wgpu::ShaderStage::all(), 0, unsafe {
+                any_as_u8_slice(&push_constants)
+            });
             render_pass.draw(0..3, 0..1);
         }
         {
