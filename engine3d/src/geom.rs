@@ -12,12 +12,15 @@ pub trait Shape {
     fn translate(&mut self, v: Vec3);
     fn pos(&mut self) -> Vec3;
     fn mass(&mut self, density: f32) -> f32;
+    fn rot(&mut self, omega: Vec3);
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
 pub struct Sphere {
     pub c: Pos3,
     pub r: f32,
+    pub rot: Quat,
+    pub omega: Vec3,
 }
 
 impl Shape for Sphere {
@@ -30,6 +33,10 @@ impl Shape for Sphere {
 
     fn mass(&mut self, density: f32) -> f32 {
         self.r.powi(3) * PI * 4.0 / 3.0 * density
+    }
+
+    fn rot(&mut self, omega: Vec3) {
+        self.omega = omega.normalize();
     }
 }
 
@@ -51,6 +58,8 @@ impl Shape for Plane {
     fn mass(&mut self, _density: f32) -> f32 {
         0.0
     }
+
+    fn rot(&mut self, omega: Vec3) {}
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -58,6 +67,8 @@ pub struct Box {
     pub c: Pos3,
     pub axes: Mat3,
     pub half_sizes: Vec3,
+    pub rot: Quat,
+    pub omega: Vec3,
 }
 
 impl Shape for Box {
@@ -71,6 +82,10 @@ impl Shape for Box {
 
     fn mass(&mut self, density: f32) -> f32 {
         self.half_sizes.x * self.half_sizes.y * self.half_sizes.z * 8.0 * density
+    }
+
+    fn rot(&mut self, omega: Vec3) {
+        self.omega = omega.normalize();
     }
 }
 
@@ -92,6 +107,8 @@ impl Shape for AABB {
     fn mass(&mut self, density: f32) -> f32 {
         self.half_sizes.x * self.half_sizes.y * self.half_sizes.z * 8.0 * density
     }
+
+    fn rot(&mut self, omega: Vec3) {}
 }
 
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -112,6 +129,8 @@ impl Shape for Ray {
     fn mass(&mut self, _density: f32) -> f32 {
         0.0
     }
+
+    fn rot(&mut self, omega: Vec3) {}
 }
 
 pub trait Collide<S: Shape>: Shape {
@@ -163,21 +182,51 @@ impl Collide<Plane> for Sphere {
     }
 }
 
-impl Collide<Sphere> for Box{
-    fn touching(&self, s:&Sphere) -> bool{
-        //assume AA:
-        ((self.c.x - s.c.x).abs() < self.half_sizes.x +s.r) || ((self.c.y - s.c.y).abs() < self.half_sizes.y +s.r) || ((self.c.z - s.c.z).abs() < self.half_sizes.z +s.r)
+impl Collide<Sphere> for Box {
+    fn touching(&self, s: &Sphere) -> bool {
+        // vector pointing from center to center:
+        let mut dist = self.c - s.c;
+        dist = self.rot * dist;
+        (dist.x.abs() < self.half_sizes.x + s.r)
+            || (dist.y.abs() < self.half_sizes.y + s.r)
+            || (dist.z.abs() < self.half_sizes.z + s.r)
     }
 
     fn disp(&self, s: &Sphere) -> Option<Vec3> {
-        let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x +s.r);
-        let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y +s.r);
-        let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z +s.r);
-        let dist = Vec3{ x, y, z};
+        /*
+        let mut dist = self.c - s.c;
+        let mut dist_rot = self.rot * dist;
+        dist_rot.x -= self.half_sizes.x + s.r;
+        dist_rot.y -= self.half_sizes.y + s.r;
+        dist_rot.z -= self.half_sizes.z + s.r;
+        if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
+            None
+        } else {
+            //dist.normalize_to(dist_rot.magnitude());
+            Some(dist)
+        }*/
+        /*
+        let x = (self.c.x - s.c.x).abs() - (self.half_sizes.x + s.r);
+        let y = (self.c.y - s.c.y).abs() - (self.half_sizes.y + s.r);
+        let z = (self.c.z - s.c.z).abs() - (self.half_sizes.z + s.r);
+        let dist = Vec3 { x, y, z };
         if dist.x > 0.0 || dist.y > 0.0 || dist.z > 0.0 {
             None
         } else {
             Some(dist)
+        }
+        */
+        let offset = s.c - self.c;
+        let distance = offset.magnitude();
+        if distance < self.half_sizes.x + s.r {
+            // Make sure we don't divide by 0
+            let distance = if distance == 0.0 { 1.0 } else { distance };
+            // How much combined radius is "left over"?
+            let disp_mag = (self.half_sizes.x + s.r) - distance;
+            // Normalize offset and multiply by the amount to push
+            Some(offset * (disp_mag / distance))
+        } else {
+            None
         }
     }
 }
@@ -185,7 +234,7 @@ impl Collide<Sphere> for Box{
 impl Collide<Plane> for Box {
     fn touching(&self, p: &Plane) -> bool {
         // Assume AA: find the distance from center to surface
-        self.c.y -self.half_sizes.y < p.d
+        self.c.y - self.half_sizes.y < p.d
     }
     fn disp(&self, p: &Plane) -> Option<Vec3> {
         let dist = self.c.y - self.half_sizes.y;
