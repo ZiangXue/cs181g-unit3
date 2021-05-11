@@ -13,3 +13,4 @@ Kd 0.6980 0.0510 0.0510
 Ks 0.4140 0.4140 0.4140
 Ke 0.0000 0.0000 0.0000
 map_Kd heart-diffuse.jpg
+map_Bump box-normal.jpg

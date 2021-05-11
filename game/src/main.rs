@@ -1,13 +1,20 @@
+use ambisonic::Ambisonic;
+use ambisonic::SoundController;
+use ambisonic::{rodio, AmbisonicBuilder};
+use rodio::{Decoder, OutputStream, Sink, source::{Amplify, Buffered, Delay, Repeat}};
+use rodio::source::{SineWave, Source};
+//change: added crates
 use cgmath::Point3;
 use engine3d::{
     collision::{self},
     events::*,
     geom::*,
     render::InstanceGroups,
+    lights::Light,
     run, Engine, DT,
 };
 use rand::{self, Rng, thread_rng};
-use std::{f32::consts::PI,usize};
+use std::{f32::consts::PI,usize, io::BufReader, fs::File};
 use winit;
 
 const NUM_TERRAIN_BOXES_DYN: usize = 40;
@@ -28,12 +35,12 @@ impl Player {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render(
             rules.player_model,
-            engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(self.body.c.to_vec() - Vec3::new(0.0, 0.2, 0.0))
+            engine3d::render::InstanceRaw::new(
+                (Mat4::from_translation(self.body.c.to_vec() - Vec3::new(0.0, 0.2, 0.0))
                     * Mat4::from_scale(self.body.r)
                     * Mat4::from(self.body.rot))
                 .into(),
-            },
+            ),
         );
     }
     fn integrate(&mut self) {
@@ -209,6 +216,14 @@ impl Camera for OrbitCamera {
         // To be fancy, we'd want to make the camera's eye to be an object in the world and whose rotation is locked to point towards the player, and whose distance from the player is locked, and so on---so we'd have player OR camera movements apply accelerations to the camera which could be "beaten" by collision.
     }
 }
+//change:added struct
+pub struct Audio
+{
+    scene: Ambisonic,
+    sound: Buffered<Decoder<BufReader<File>>>,
+    music: Repeat<Decoder<BufReader<File>>>,
+    collision_sound: Option<SoundController>
+}
 
 #[derive(Clone, Debug)]
 pub struct Marbles {
@@ -223,12 +238,12 @@ impl Marbles {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render_batch(
             rules.marble_model,
-            self.body.iter().map(|body| engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(body.c.to_vec())
+            self.body.iter().map(|body| engine3d::render::InstanceRaw::new(
+                (Mat4::from_translation(body.c.to_vec())
                     * Mat4::from_scale(body.r)
                     * Mat4::from(body.rot))
-                .into(),
-            }),
+                .into()
+            )),
         );
     }
     fn integrate(&mut self) {
@@ -261,14 +276,14 @@ impl Wall {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render(
             rules.wall_model,
-            engine3d::render::InstanceRaw {
-                model: (Mat4::from(cgmath::Quaternion::between_vectors(
+            engine3d::render::InstanceRaw::new(
+                (Mat4::from(cgmath::Quaternion::between_vectors(
                     Vec3::new(0.0, 1.0, 0.0),
                     self.body.n,
                 )) * Mat4::from_translation(Vec3::new(0.0, -0.025, 0.0))
                     * Mat4::from_nonuniform_scale(0.5, 0.05, 0.5))
                 .into(),
-            },
+            ),
         );
     }
 
@@ -349,12 +364,12 @@ impl Terrain_Boxes_Stat {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render_batch(
             rules.terrain_box_stat_model,
-            self.body.iter().map(|body| engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(body.c.to_vec())
+            self.body.iter().map(|body| engine3d::render::InstanceRaw::new(
+                (Mat4::from_translation(body.c.to_vec())
                     * Mat4::from_scale(body.half_sizes.x)
                     * Mat4::from(body.rot))
                 .into(),
-            }),
+            )),
         );
     }
     fn integrate(&mut self) {
@@ -429,11 +444,11 @@ impl Terrain_Boxes_Dyn {
     fn render(&self, rules: &GameData, igs: &mut InstanceGroups) {
         igs.render_batch(
             rules.terrain_box_dyn_model,
-            self.body.iter().map(|body| engine3d::render::InstanceRaw {
-                model: (Mat4::from_translation(body.c.to_vec())
+            self.body.iter().map(|body| engine3d::render::InstanceRaw::new(
+                (Mat4::from_translation(body.c.to_vec())
                     * Mat4::from_scale(body.half_sizes.x)*Mat4::from(body.rot))
                 .into(),
-            }),
+            )),
         );
     }
     fn integrate(&mut self) {
@@ -469,6 +484,9 @@ struct Game<Cam: Camera> {
     dp: Vec<collision::Contact<usize>>,
     dm: Vec<collision::Contact<usize>>,
     score:usize,
+    //change:added to game struct
+    _soundstream: (rodio::OutputStream, rodio::OutputStreamHandle),
+    audio: Audio
 }
 struct GameData {
     marble_model: engine3d::assets::ModelRef,
@@ -542,6 +560,19 @@ impl<C: Camera> engine3d::Game for Game<C> {
         let player_model = engine.load_model("capsule.obj");
         let terrain_box_stat_model = engine.load_model("box.obj");
         let terrain_box_dyn_model = engine.load_model("box_dyn.obj");
+        engine.set_lights(vec![Light::point(
+            Pos3::new(0.0, 10.0, 0.0),
+            Vec3::new(1.0, 1.0, 1.0),
+        )]);
+        engine.set_ambient(0.1);
+
+        let scene = AmbisonicBuilder::new().build();
+        let file = BufReader::new(File::open("content/collide.mp3").unwrap());
+        let sound = rodio::Decoder::new(file).unwrap().buffered();
+        let music_file = BufReader::new(File::open("content/bgm.ogg").unwrap());
+        let music = Decoder::new(music_file).unwrap().repeat_infinite();
+        let soundstream = OutputStream::try_default().unwrap();
+        soundstream.1.play_raw(music.clone().amplify(0.5).convert_samples()).unwrap();
         (
             Self {
                 // camera_controller,
@@ -562,6 +593,14 @@ impl<C: Camera> engine3d::Game for Game<C> {
                 dp: vec![],
                 dm: vec![],
                 score:0,
+                //change:added to start()
+                _soundstream: soundstream,
+                audio: Audio {
+                    scene,
+                    sound,
+                    music,
+                    collision_sound: None
+                }
             },
             GameData {
                 wall_model,
@@ -778,7 +817,26 @@ impl<C: Camera> engine3d::Game for Game<C> {
             assert_eq!(*pa, 0);
             self.player.velocity *= 0.98;
         }
-    
+        for collision::Contact { a: ma, .. } in self.mw.iter() {
+            // apply "friction" to marbles on the ground
+            self.marbles.velocity[*ma] *= 0.995;
+        }
+
+        if !self.dm.is_empty() {
+            //change:collision sound added
+            //checking if there are colliding pairs, then play sound according to boxes' pos
+            //really not sure if I grabed the pos right, just trying to get the first box in the colliding pair
+            for collision in &self.dm {
+                let box_c = self.terrain_boxes_dyn.body[collision.a].c;
+                let box_posn = [box_c.x, box_c.y, box_c.z]; 
+                
+                self
+                    .audio
+                    .scene
+                    .play_at(self.audio.sound.clone().convert_samples(), box_posn);
+            }
+        }
+       
         /*Removal Segment*/
         {
             let mut i=0;

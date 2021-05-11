@@ -205,7 +205,7 @@ impl Anim {
             let tfrom = &self.trans_keys[(ttgt_count * kidx)..(ttgt_count * (kidx + 1))];
             let tto = &self.trans_keys[(ttgt_count * (kidx + 1))..(ttgt_count * (kidx + 2))];
             for ((tgt, from), to) in self.trans_targets.iter().zip(tfrom.iter()).zip(tto.iter()) {
-                let j = &rig.joints[*tgt as usize];
+                let _j = &rig.joints[*tgt as usize];
                 bones[*tgt as usize].translation = (from.lerp(*to, tr)).into();
             }
         }
@@ -215,7 +215,7 @@ impl Anim {
             let rfrom = &self.rot_keys[(rtgt_count * kidx)..(rtgt_count * (kidx + 1))];
             let rto = &self.rot_keys[(rtgt_count * (kidx + 1))..(rtgt_count * (kidx + 2))];
             for ((tgt, from), to) in self.rot_targets.iter().zip(rfrom.iter()).zip(rto.iter()) {
-                let j = &rig.joints[*tgt as usize];
+                let _j = &rig.joints[*tgt as usize];
                 bones[*tgt as usize].rotation = (from.nlerp(*to, tr)).into();
             }
         }
