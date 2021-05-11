@@ -4,7 +4,7 @@ members = [
 	"game",
 	"shaders/models",
 	"shaders/shadows",
-	"shaders/bones",
+	"shaders/sky-shader",
 ]
 
 # Enable incremental by default in release mode.

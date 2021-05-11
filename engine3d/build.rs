@@ -10,5 +10,6 @@ fn build_shader(path_to_create: &str) -> Result<(), Box<dyn Error>> {
 fn main() -> Result<(), Box<dyn Error>> {
     build_shader("../shaders/models")?;
     build_shader("../shaders/shadows")?;
+    build_shader("../shaders/sky-shader")?;
     Ok(())
 }

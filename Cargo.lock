@@ -135,15 +135,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0d8c1fef690941d3e7788d328517591fecc684c084084702d6ff1641e993699a"
 
 [[package]]
-name = "bone_shader"
-version = "0.1.0"
-dependencies = [
- "glam",
- "spirv-std",
- "spirv-std-macros",
-]
-
-[[package]]
 name = "bumpalo"
 version = "3.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1969,6 +1960,23 @@ dependencies = [
  "glam",
  "spirv-std",
  "spirv-std-macros",
+]
+
+[[package]]
+name = "shared"
+version = "0.4.0-alpha.6"
+dependencies = [
+ "glam",
+ "spirv-std",
+]
+
+[[package]]
+name = "sky-shader"
+version = "0.4.0-alpha.6"
+dependencies = [
+ "glam",
+ "shared",
+ "spirv-std",
 ]
 
 [[package]]

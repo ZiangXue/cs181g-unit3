@@ -20,6 +20,7 @@ pub(crate) struct Render {
     swap_chain: wgpu::SwapChain,
     pub(crate) size: winit::dpi::PhysicalSize<u32>,
     static_render_pipeline: wgpu::RenderPipeline,
+    sky_render_pipeline: wgpu::RenderPipeline,
     pub(crate) texture_layout: wgpu::BindGroupLayout,
     pub(crate) camera: Camera,
     uniforms: Uniforms,
@@ -281,6 +282,8 @@ impl Render {
             device.create_shader_module(&wgpu::include_spirv!(env!("model_shader.spv")));
         let shadows_module =
             device.create_shader_module(&wgpu::include_spirv!(env!("shadow_shader.spv")));
+        let sky_module =
+            device.create_shader_module(&wgpu::include_spirv!(env!("sky_shader.spv")));
 
         let depth_texture =
             texture::Texture::create_depth_texture(&device, &sc_desc, "depth_texture");
@@ -396,6 +399,49 @@ impl Render {
                 },
             })
         };
+
+        let sky_render_pipeline = {
+            let sky_render_pipeline_layout =
+                device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                    label: Some("Sky Render Pipeline Layout"),
+                    bind_group_layouts: &[],
+                    push_constant_ranges: &[],
+                });
+
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Sky Render Pipeline"),
+                layout: Some(&sky_render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &sky_module,
+                    entry_point: "main_vs",
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &sky_module,
+                    entry_point: "main_fs",
+                    targets: &[wgpu::ColorTargetState {
+                        format: sc_desc.format,
+                        alpha_blend: wgpu::BlendState::REPLACE,
+                        color_blend: wgpu::BlendState::REPLACE,
+                        write_mask: wgpu::ColorWrite::ALL,
+                    }],
+                }),
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: wgpu::CullMode::Back,
+                    // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                },
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+            })
+        };
         Self {
             surface,
             device,
@@ -404,6 +450,7 @@ impl Render {
             swap_chain,
             size,
             static_render_pipeline,
+            sky_render_pipeline,
             camera,
             uniform_buffer,
             uniform_bind_group,
@@ -479,8 +526,7 @@ impl Render {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
-        {
-            let shadow = &self.shadows[0];
+        for shadow in self.shadows.iter() {
             let mut shadow_render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("Render Pass"),
                 color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
@@ -519,12 +565,24 @@ impl Render {
                     attachment: &frame.view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
-                        }),
+                        load: wgpu::LoadOp::Load,
+                        store: true,
+                    },
+                }],
+                depth_stencil_attachment: None,
+            });
+
+            render_pass.set_pipeline(&self.sky_render_pipeline);
+            render_pass.draw(0..3, 0..1);
+        }
+        {
+            let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("Render Pass"),
+                color_attachments: &[wgpu::RenderPassColorAttachmentDescriptor {
+                    attachment: &frame.view,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
                         store: true,
                     },
                 }],
